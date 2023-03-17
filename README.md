@@ -2,12 +2,12 @@ MTA is a Python script following the KISS principle, running interactively in yo
 
 MTA does:
 
-    - Topic model analysis with NMF and LDA algorithms; word and document embeddings with the Word2Vec algorithms
-    - Cross validation metrics for topic model analysis based on clustering algorithms aiming at guessing the best number of topics for a particular corpus
-    - Similarity analysis of documents, words, semantic clusters and given selected words by the user based on words embeddings
-    - Visualisation of results with high quality plots saved in a MTA-folder during the analysis, which you can easily redesign to your liking;
-    - Results saved as csv files to be plotted or analyzed with third-party applications
-    - Runs from within Stata with version 1.1 and above, and can be automatized with a text file or a do-file in Stata.
+ - Topic model analysis with NMF and LDA algorithms; word and document embeddings with the Word2Vec algorithms
+ - Cross validation metrics for topic model analysis based on clustering algorithms aiming at guessing the best number of topics for a particular corpus
+ - Similarity analysis of documents, words, semantic clusters and given selected words by the user based on words embeddings
+ - Visualisation of results with high quality plots saved in a MTA-folder during the analysis, which you can easily redesign to your liking;
+ - Results saved as csv files to be plotted or analyzed with third-party applications
+ - Runs from within Stata with version 1.1 and above, and can be automatized with a text file or a do-file in Stata.
 
 MTA analyses corpus in most common languages and it can be calibrated to support more languages – for example, MTA has been adapted and used by PhD. scholars for analyzing files in Albanian, Japanese, Polish and Farsi languages.
 
@@ -16,9 +16,9 @@ MTA outputs plots in English, German or French as illustrations for scientific r
 MTA is a research project. It has given life to other tools used in order to extract most of the important informations of text collections from simple sets of bash scripts to elaborated multi-platform R and python scripts. Interested in such tools or our research trend? Let's get in touch, drop us a mail.
 Quote this software
 
-If you want to quote this software in your publication:
+**If you want to quote this software in your publication**:
 
-Papilloud, C., 2017-2022, MTA: Multi-Text Analyser, http://soziologie.uni-halle.de/professuren/theorie/
+Papilloud, C., 2017-2023, MTA: Multi-Text Analyser, http://soziologie.uni-halle.de/professuren/theorie/
 
 BIBTEX bibliographical recording:
 
