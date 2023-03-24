@@ -32,8 +32,6 @@ import seaborn as sns
 import community
 import gensim
 import importlib
-#import multiprocessing as mp # new no installation needed
-#import tqdm # new no installation needed
 from tqdm.contrib.concurrent import process_map
 from os.path import expanduser
 from matplotlib.font_manager import FontProperties
@@ -72,7 +70,6 @@ from gensim.utils import simple_preprocess
 from gensim.models import CoherenceModel
 from gensim.corpora.dictionary import Dictionary
 from itertools import cycle
-#from wordcloud import WordCloud, STOPWORDS
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 pandas.options.mode.chained_assignment = None  # default='warn'
 importlib.reload(sys) # pour garder le code en utf-8
@@ -162,10 +159,6 @@ similar_texts_nmf = os.path.join(save_home, 'Similar_Texts_NMF_')
 similar_texts_lda = os.path.join(save_home, 'Similar_Texts_LDA_')
 similar_topics_nmflda = os.path.join(save_home, 'Similar_Topics_NMF-LDA_')
 #
-#nmf_wc = os.path.join(save_home, 'Wordcloud_NMF_All_Topics_')
-#nmf_wc_new = os.path.join(save_home, 'Wordcloud_NMF_Eachtopic_')
-#lda_wc = os.path.join(save_home, 'Wordcloud_LDA_All_Topics_')
-#lda_wc_new = os.path.join(save_home, 'Wordcloud_LDA_Eachtopic_')
 #
 nmf_df = os.path.join(save_home, 'Weights_Words_NMF_Topics')
 mat_nmf_df = os.path.join(save_home, 'Weights_Words_NMF_Topics_Network')
@@ -534,46 +527,6 @@ def km_metrics_all(km_sc,km_sil,db_sc,gm_b,gm_sc):
     plt.savefig(clusters_metrics + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
     yield km_sc, km_sil, db_sc, gm_b, gm_sc
 
-# Same as above for large to big corpus -- remove gaussian mixture as it
-# performs bad on such corpus
-
-#def km_metrics_part(km_sc,km_sil,db_sc):
-#    for i in range(2,num_c):
-#        km = KMeans(n_clusters=i, random_state=0,init="k-means++").fit(X_scaled)
-#        preds = km.predict(X_scaled)
-#        print(("-"*100))
-#        print(("Score for number of cluster(s){}:{}".format(i,km.score(X_scaled))))
-#        km_sc.append(-km.score(X_scaled))
-#        silhouette = silhouette_score(X_scaled,preds)
-#        km_sil.append(silhouette)
-#        print(("Silhouette score for number of cluster(s) {}:{}".format(i,silhouette)))
-#        db = davies_bouldin_score(X_scaled,preds)
-#        db_sc.append(db)
-#        print(("Davies Bouldin score for number of cluster(s) {}:{}".format(i,db)))
-#    # Delete unneeded objects
-#    del km
-#    del preds
-#    del silhouette
-#    del db
-#    plt.clf()
-#    font_plt(plt_font)
-#    fig, axs = plt.subplots(1,2, sharex=True)
-#    axs[0].scatter(x=[i for i in range(2,num_c)],y=km_silhouette,s=15,edgecolor='#b58900',alpha=0.5)
-#    axs[0].set_title('Silhouette')
-#    axs[1].scatter(x=[i for i in range(2,num_c)],y=db_score,s=15,edgecolor='#cb4b16',alpha=0.5)
-#    axs[1].set_title('Davis Bouldin')
-#    fig.tight_layout()
-#    font_plt(plt_font)
-#    for ax in axs.flat:
-#        ax.set(xlabel='Clusters', ylabel='Metrics')
-#    for ax in axs.flat:
-#        ax.label_outer()
-#    plt.xticks([i for i in range(2,num_c)])
-#    if num_c > 20:
-#        plt.locator_params(nbins=10, axis='x')
-#    plt.yticks(fontsize=8)
-#    plt.savefig(clusters_metrics + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
-#    yield km_sc, km_sil, db_sc
 #
 # Function to model the topics with NMF
 #
@@ -806,30 +759,19 @@ while loop:
             ks = list(range(2, num_c))
             X_scaled = dense_a.T
 
-
-            if len(corp_labels) < 2000:
-                km_scores = []
-                km_silhouette = []
-                db_score = []
-                gm_bic= []
-                gm_score=[]
-                list(km_metrics_all(km_scores,km_silhouette,db_score,gm_bic,gm_score))
-                # Delete unneeded lists
-                del km_scores
-                del km_silhouette
-                del db_score
-                del gm_bic
-                del gm_score
-                gc.collect()
-            else:
-                km_scores = []
-                km_silhouette = []
-                db_score = []
-                list(km_metrics_part(km_scores,km_silhouette,db_score))
-                del km_scores
-                del km_silhouette
-                del db_score
-                gc.collect()
+            km_scores = []
+            km_silhouette = []
+            db_score = []
+            gm_bic= []
+            gm_score=[]
+            list(km_metrics_all(km_scores,km_silhouette,db_score,gm_bic,gm_score))
+            # Delete unneeded lists
+            del km_scores
+            del km_silhouette
+            del db_score
+            del gm_bic
+            del gm_score
+            gc.collect()
 
             if len(corp_labels) > 80:
                # Bertopic
@@ -894,7 +836,7 @@ while loop:
                df_umap["topic"] = topics
 
                # Fontsize and colors for Bertplot
-               fontsize = 12
+               fontsize = 10
                cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
                                                         '#03A9F4', # Blue
                                                         '#4CAF50', # Green
@@ -920,8 +862,8 @@ while loop:
 
                # Visualize outliers + inliers
                fig, ax = plt.subplots(figsize=(10, 12))
-               scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=1, alpha=.3)
-               scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=1, alpha=.3, cmap=cmap)
+               scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
+               scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
 
                # Add topic name to clusters
                centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
@@ -1043,42 +985,6 @@ while loop:
         del topname
         del topic_words_nmf_df
         gc.collect()
-
-#        dict_topic_wc = {}
-#        for a, x in topic_df.values:
-#            dict_topic_wc[a] = x
-#
-#        plt.clf()
-#
-#        wordcloud = WordCloud(width=1000, height=500)
-#        wordcloud.generate_from_frequencies(frequencies=dict_topic_wc)
-#        plt.figure(figsize=(15,10))
-#        plt.imshow(wordcloud, interpolation="bilinear")
-#        plt.axis("off")
-#        plt.savefig(nmf_wc + str(num_topics) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', facecolor='k', bbox_inches='tight')
-#
-#        n_w = 50
-#        list_topic_df = [topic_df[i:i+n_w] for i in range(0,topic_df.shape[0],n_w)]
-#
-#        plt.clf()
-#
-#        for i in list_topic_df:
-#            pd_t = pandas.DataFrame(i, columns =['Words', 'Values'])
-#            pd_t['Values'] = [0.000010 if x == 0.000000 else x for x in pd_t.Values]
-#            tuples_t = [tuple(x) for x in pd_t.values]
-#            tuples_topics = dict(tuples_t)
-#            wordcloud = WordCloud(width=1000, height=500)
-#            wordcloud.generate_from_frequencies(frequencies=tuples_topics)
-#            plt.figure(figsize=(15,10))
-#            plt.imshow(wordcloud, interpolation="bilinear")
-#            plt.axis("off")
-#            plt.savefig(nmf_wc_new + str(num_topics) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', facecolor='k', bbox_inches='tight')
-#        # Delete unneeded objects
-#        del pd_t
-#        del tuples_t
-#        del tuples_topics
-#        del wordcloud
-#        gc.collect()
 
         print("""\n
         We save the following files for NMF results:
@@ -1266,46 +1172,6 @@ while loop:
             del topic_df_lda_copy
             del topicnames
             gc.collect()
-
-
-#            dict_topic_wc_lda = {}
-#            for a, x in topic_df_lda.values:
-#                dict_topic_wc_lda[a] = x
-#
-#            plt.clf()
-#
-#            wordcloud_lda = WordCloud(width=1000, height=500)
-#            wordcloud_lda.generate_from_frequencies(frequencies=dict_topic_wc_lda)
-#            font_plt(plt_font)
-#            plt.figure(figsize=(15,10))
-#            plt.imshow(wordcloud_lda, interpolation="bilinear")
-#            plt.axis("off")
-#            plt.savefig(lda_wc + str(num_tof) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', facecolor='k', bbox_inches='tight')
-#
-#            n_w = 50
-#            list_topic_df_lda = [topic_df_lda[i:i+n_w] for i in range(0,topic_df_lda.shape[0],n_w)]
-#
-#            plt.clf()
-#
-#            for i in list_topic_df_lda:
-#                pd_t_lda = pandas.DataFrame(i, columns =['Words', 'Values'])
-#                pd_t_lda['Values'] = [0.000010 if x == 0.000000 else x for x in pd_t_lda.Values]
-#                tuples_t_lda = [tuple(x) for x in pd_t_lda.values]
-#                tuples_topics_lda = dict(tuples_t_lda)
-#                wordcloud_lda = WordCloud(width=1000, height=500)
-#                wordcloud_lda.generate_from_frequencies(frequencies=tuples_topics_lda)
-#                font_plt(plt_font)
-#                plt.figure(figsize=(15,10))
-#                plt.imshow(wordcloud_lda, interpolation="bilinear")
-#                plt.axis("off")
-#                plt.savefig(lda_wc_new + str(num_tof) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', facecolor='k', bbox_inches='tight')
-#
-#            # Delete unneeded objects
-#            del pd_t_lda
-#            del tuples_t_lda
-#            del tuples_topics_lda
-#            del wordcloud_lda
-#            gc.collect()
 
             print("""\n
             Now, we save the following files for LDA results:
