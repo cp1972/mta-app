@@ -24,7 +24,7 @@ python script /path/to/your/MTA3-1.1.py <-- for Linux and MacOS
 python script C:\path\to\you\MTA3-1.1.py <-- for Windows users
 ```
 
-Stata provide the commands python search an python query to find your python installation and set the path to the python executable. Please, look at the Stata documentation or [https://fintechprofessor.com/2019/06/30/quick-setup-of-python-with-stata-16/] (this blog post) in order to set your path the right way.
+Stata provide the commands python search an python query to find your python installation and set the path to the python executable. Please, look at the Stata documentation or [https://fintechprofessor.com/2019/06/30/quick-setup-of-python-with-stata-16/](this blog post) in order to set your path the right way.
 
 MTA will work as usual, outputing its files in the MTA directory it has created on your hard drive.
 
