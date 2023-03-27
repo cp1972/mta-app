@@ -6,7 +6,7 @@
 
 [Getting started](doc.md)
 
-[Automation or batch usage](automate.md)
+[Automation or batch usage and use with Stata](automate.md)
 
 [Changelog](changes.md)
 

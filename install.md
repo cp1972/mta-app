@@ -20,14 +20,12 @@ For Windows and Mac OS users not comfortable with the command line, I recommend 
 
 ```
 conda install gensim python-louvain
-
 ```
 
 In the Terminal, install the 'community' package with pip like this:
 
 ```
 pip install community
-
 ```
 
 Anaconda provides an easy way to keep your packages updated -- don't forget to update them to stay on track with the development of MTA.
@@ -38,7 +36,6 @@ Anaconda provides an easy way to keep your packages updated -- don't forget to u
 
 ```
 pip install pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl wrapt‑1.11.2‑cp27‑cp27m‑win_amd64.whl
-
 ```
 
 It might be that windows users -- depending on their version of windows -- have to install qt5; from the Anaconda Navigator using the Terminal, type:
@@ -51,7 +48,6 @@ After that, download MTA and open it from the Anaconda Navigator by using the Te
 
 ```
 python3.8 MTA.py.
-
 ```
 
 MTA will crash if your path is not writable for the user -- make sure you have sufficient permission on your path before processing. In doubt, ask your admin.

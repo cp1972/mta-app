@@ -59,7 +59,7 @@ This folder gets a timestamp so that you can run MTA several times, and each run
 While running MTA, you firstly have to provide the path to your data, as f.ex.:
 
 ```
-/john/textfiles/* <-- for Mac OS, Unixes/BSD
+/home/john/textfiles/* <-- for Mac OS, Unixes/BSD
 ```
 
 ```
@@ -77,7 +77,7 @@ The case of different languages: if you have files in different languages, don't
 It is mandatory to use a stopwords file adapted to the language of your files. MTA asks you for the location of this file on your computer. Your provide the full path to your stopwords file like this:
 
 ```
-/john/stopwords/englishstopwords.txt <-- Mac OS, Unixes/BSD
+/home/john/stopwords/englishstopwords.txt <-- Mac OS, Unixes/BSD
 ```
 
 ```

@@ -19,9 +19,9 @@ The main advantage to use an input text file is that you can easily keep track o
 If you want to couple MTA to Stata (16 and above), it is easily done thanks to the new functionality of Stata which support python. You can call MTA from a Stata Command window like this:
 
 ```
-python script /path/to/your/MTA3-1.1.py <-- for Linux and MacOS
+python script /path/to/your/MTA.py <-- for Linux and MacOS
 
-python script C:\path\to\you\MTA3-1.1.py <-- for Windows users
+python script C:\path\to\you\MTA.py <-- for Windows users
 ```
 
 Stata provide the commands python search an python query to find your python installation and set the path to the python executable. Please, look at the Stata documentation or [this blog post](https://fintechprofessor.com/2019/06/30/quick-setup-of-python-with-stata-16/) in order to set your path the right way.
