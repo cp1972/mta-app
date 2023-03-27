@@ -2,13 +2,13 @@
 
 ## Documentation
 
-[Installation] (install)
+[install] (Installation)
 
-[Getting started] (doc)
+[doc] (Getting started)
 
-[Automation or batch usage] (automate)
+[automate] (Automation or batch usage)
 
-[Changelog] (changes)
+[changes] (Changelog)
 
 MTA is a Python script for topic-modelling analysis following the KISS principle, running interactively in your terminal and providing a handful of exploratory methods for topic model analysis. MTA can handle almost every kind of text sources from short words' lists to complete works or big collection of files (so called big data). It works in Windows and iOS via Anaconda, and as is in Linux and BSD operating systems.
 
