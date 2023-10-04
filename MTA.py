@@ -123,7 +123,7 @@ Author: Christian Papilloud
 
 Email: christian dot papilloud at soziologie dot uni minus halle dot de
 
-Documentation: https://cp.soziologie.uni-halle.de/MTA/doku.php
+Documentation: https://github.com/cp1972/mta-app
 
 """)
 #
@@ -1574,12 +1574,12 @@ while loop:
                     w2vmodel.save(w2vec)
                 elif save_yn == "no" or save_yn == "n":
                     print("\nWe do not save your model")
-            
+
             # Check the list to keep only items in the w2vec model
             for item in user_sw_lst[:]:
                if item not in w2vmodel.wv:
-                  user_sw_lst.remove(item)            
-            
+                  user_sw_lst.remove(item)
+
             print("\nBest similar words to your word(s) decreasing in importance from left to right\n")
             similar_words = {given_term: [item[0] for item in w2vmodel.wv.most_similar([given_term]) if item[1] > 0.1] for given_term in user_sw_lst}
             print("{:<15} {:<25}".format('Input word(s)','Similar words'))
