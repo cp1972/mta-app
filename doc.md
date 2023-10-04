@@ -11,12 +11,17 @@ MTA takes your files and your stopwords list in UTF-8 encoding. This means that 
 **Use MTA as is**: download MTA, open a terminal of your choice where you have saved MTA, and type:
 
 ```
+python3.10 MTA.py
+```
+here for a python installation with python version 3.10.
+
+If you are a Windows' user and if you have installed the Anaconda software, run MTA in an Anaconda Terminal from the Anaconda Navigator like this:
+
+```
 python MTA.py
 ```
 
-If you are a Windows' user and if you have installed the Anaconda software, run MTA in an Anaconda Terminal from the Anaconda Navigator.
-
-Again, Windows' users have to make sure that they can read and write to the folder in which they grab their text files. In case of doubt, copy your file directly in a folder under C (as f.ex.: C:\mytextfiles\).
+Windows' users have to make sure that **they can read and write to the folder in which they grab their text files**. In case of doubt, copy your file directly to a folder under C (as f.ex.: C:\mytextfiles\).
 
 # Specific usage for Unixes/BSD
 

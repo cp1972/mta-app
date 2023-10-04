@@ -392,7 +392,6 @@ df_median = labeling(df_one)
 
 # Delete unneeded matrices
 
-#del df_tfidf
 del df_one
 gc.collect()
 #
@@ -751,7 +750,7 @@ while loop:
         if bnt_f == "yes" or bnt_f == "y":
             num_c =  int(input("\nMax. number of topics you think you would have in your text: "))
             print("You entered: \n" + str(num_c))
-            print("\nWe calculate the best number of topics for NMF and LDA with culstering methods and BERTopic\n")
+            print("\nWe calculate the best number of topics for NMF and LDA\n")
             #
             ### Metrics: Silhouette, Davies Bouldin score, BIC and
             # Log-Likelihood -- Save a plot with the results
@@ -773,39 +772,39 @@ while loop:
             del gm_score
             gc.collect()
 
-            if len(corp_labels) > 80:
-               # Bertopic
-               print("\nBERTopic model\n")
-               print("""\n
-               BERTopic shows topics based on semantic similarities in your documents. If your
-               documents are very similar in their contents, you will get few topics. If your
-               documents are very dissimilar in their contents, you get more/a lot of topics.
-               BERTopic works best with large amount of documents. Take the results as follows:
+            # Bertopic
+            print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
+            print("""\n
+            BERTopic shows topics based on semantic similarities in your documents. If your
+            documents are very similar in their contents, you will get few topics. If your
+            documents are very dissimilar in their contents, you get more/a lot of topics.
+            BERTopic works best with large amount of documents. Take the results as follows:
 
-               - few texts return few topics and tell you the absolute minimal number of topics
-                 to expect from your corpus
-               - large amount of texts returns a lot of topics and tells you the maximal number
-                 of topics to expect from your corpus
+            - few texts return few topics and tell you the absolute minimal number of topics
+              to expect from your corpus
+            - large amount of texts returns a lot of topics and tells you the maximal number
+              of topics to expect from your corpus
 
-               We save the following files for BERT results:
+            We save the following files for BERT results:
 
-               - semantic proximities between topics in 2D space
-               - contribution of five best words to first seventh topics
+            - semantic proximities between topics in 2D space
+            - contribution of five best words to first topics
 
-               You will find these files in your MTA-Results folder.
-               """)
-               embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-               umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.15, metric='cosine')
-               hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
-               vectorizer_model = lda_vectorize
+            You will find these files in your MTA-Results folder.
+            """)
+            embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+            umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.15, metric='cosine')
+            hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
+            vectorizer_model = lda_vectorize
 
-               bertmodel = BERTopic(
-                  embedding_model=embedding_model,
-                  umap_model=umap_model,
-                  hdbscan_model=hdbscan_model,
-                  vectorizer_model=vectorizer_model,
-                  language="multilanguage")
+            bertmodel = BERTopic(
+               embedding_model=embedding_model,
+               umap_model=umap_model,
+               hdbscan_model=hdbscan_model,
+               vectorizer_model=vectorizer_model,
+               language="multilanguage")
 
+            try:
                topics, probs = bertmodel.fit_transform(corpus_wo)
                hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
 
@@ -883,8 +882,8 @@ while loop:
                fig = bertmodel.visualize_barchart()
                fig.write_html(bertbar)
 
-            else:
-               print("\Less than 80 texts -- we do not perform BERTopic")
+            except ValueError:
+               print("\nNot enough vocabulary to perform Bertopic -- Skip")
 
         elif bnt_f == "no" or bnt_f == "n":
             print("\nNo automatic estimation -- we continue\n")

@@ -1,5 +1,10 @@
 # Major changes in versions of MTA
 
+## MTA3-1.8 -- September 2023 -- Minor release
+
+  - New function to better catch errors due to the use of BERTopic models in case of too few remaining vocabulary: MTA does not crash anymore if you have to few words to build topic models; this function enables to get rid of the minimal amount of texts that we use to apply/not apply BERTopic; keep in mind that we are not using BERTopic as a model, rather as an estimation method providing the maximal amount of topics in your dataset;
+  - Improve the documentation: it mainly regards a workaround to install BERTopic on Windows -- with anaconda, you have to install hdbscan from conda forge _before_ installing bertopic with pip (pip install bertopic).
+
 ## MTA3-1.7 -- March 2023 -- Major release
 
 MTA3-1.7 is a major release with significant improvements/changes compared to other MTA versions and further refinement of RAM management for the analysis of big corpora.
