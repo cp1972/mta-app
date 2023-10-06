@@ -118,10 +118,11 @@ print("""
 
         \t\tMTA -- Multi-Text Analyser
 
+Version: 1.8
 
 Author: Christian Papilloud
 
-Email: christian dot papilloud at soziologie dot uni minus halle dot de
+Email: christian.papilloud at soziologie.uni-halle.de
 
 Documentation: https://github.com/cp1972/mta-app
 
