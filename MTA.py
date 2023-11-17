@@ -211,7 +211,7 @@ Give the absolute path to a directory with your files: \n
 # Keep only filenames for labeling matrices -- generator to iterate over files
 # and make list of stopwords
 #
-k = (os.path.basename(x) for x in glob.glob(in_files))
+k = (os.path.basename(x) for x in sorted(glob.glob(in_files)))
 corp_labels = list(k)
 #
 # Load stopwords
@@ -291,7 +291,7 @@ def remove_url(lst_url):
 # Reading the corpus into list with generator function -- List of strings
 #
 def generate_corpus(files):
-    return [open(file, encoding="utf8").read() for file in glob.glob(files)]
+    return [open(file, encoding="utf8").read() for file in sorted(glob.glob(files))]
 
 corp_gen = generate_corpus(in_files)
 corp_woa = remove_stopwords(corp_gen)
