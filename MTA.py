@@ -880,7 +880,7 @@ while loop:
                plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
 
                # Save plots of words per topics
-               fig = bertmodel.visualize_barchart()
+               fig = bertmodel.visualize_barchart(topics=[0:10],n_words=20)
                fig.write_html(bertbar)
 
             except ValueError:
