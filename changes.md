@@ -1,9 +1,19 @@
 # Major changes in versions of MTA
 
-## MTA3-1.8 -- September 2023 -- Minor release
+## MTA version 1.9 -- September 2024 -- Minor release
+
+  - New facility to save list of files corresponding to cluster of words provided with menu entry 4; with this list, you can the corpus to retain only the files corresponding to the cluster of similar words attached to word(s) given at the MTA prompt in this menu. You can then perform a topic analysis on these selected documents. For sh/bash user, you could do the following to copy the needed files mentioned in the list to a new directory:
+
+    - make a new directory: mkdir mynewdir
+    - use the following onliner: for file in `cat BestFiles_ChoosenWords_dateofthefile.csv`; do cp "$file" /path/to/mynewdir ; done
+
+    This will copy the files listed in the document BestFiles_ChoosenWords_dateofthefile.csv to your mynewdir. Replace "BestFiles_ChoosenWords_dateofthefile" with the name of the appropriate file in your MTA-Results directory (you might have several of them).
+
+## MTA verion 1.8 -- September 2023 -- Minor release
 
   - New function to better catch errors due to the use of BERTopic models in case of too few remaining vocabulary: MTA does not crash anymore if you have to few words to build topic models; this function enables to get rid of the minimal amount of texts that we use to apply/not apply BERTopic; keep in mind that we are not using BERTopic as a model, rather as an estimation method providing the maximal amount of topics in your dataset;
   - Improve the documentation: it mainly regards a workaround to install BERTopic on Windows -- with anaconda, you have to install hdbscan from conda forge _before_ installing bertopic with pip (pip install bertopic).
+  - Now MTA version is called 'MTA.py' only.
 
 ## MTA3-1.7 -- March 2023 -- Major release
 

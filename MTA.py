@@ -118,7 +118,7 @@ print("""
 
         \t\tMTA -- Multi-Text Analyser
 
-Version: 1.8
+Version: 1.9
 
 Author: Christian Papilloud
 
@@ -185,6 +185,8 @@ sentlda = os.path.join(save_home, 'Best_Sentences_LDA_')
 #
 bertplot = os.path.join(save_home, 'Bertopic_Topics_')
 bertbar = os.path.join(save_home, 'Bertopic_Words_Topics.html')
+#
+bestfileswords = os.path.join(save_home, 'BestFiles_ChoosenWords_')
 #
 #
 # Load corpus
@@ -1581,11 +1583,44 @@ while loop:
                   user_sw_lst.remove(item)
 
             print("\nBest similar words to your word(s) decreasing in importance from left to right\n")
-            similar_words = {given_term: [item[0] for item in w2vmodel.wv.most_similar([given_term]) if item[1] > 0.1] for given_term in user_sw_lst}
+            similar_words = {given_term: [item[0] for item in w2vmodel.wv.most_similar([given_term]) if item[1] > 0.01] for given_term in user_sw_lst}
             print("{:<15} {:<25}".format('Input word(s)','Similar words'))
             for k, v in similar_words.items():
                 words = v
                 print("{:<15} {:<25}".format(k, ', '.join(words)))
+
+            # Check best files for input words
+
+            swkeys=list(similar_words.keys())
+            swval=list(similar_words.values())
+            flt_swval=[x for xs in swval for x in xs]
+            smerge=swkeys + flt_swval
+            dfmedian_n =df_median[df_median.columns.intersection(smerge)]
+            dfmedian_n['mean']=dfmedian_n.mean(axis=1)
+
+            bestfilescwords_yesno = input("\nDo you want to save a list of best files for your choosen words (yes/no)?: ")
+            if bestfilescwords_yesno == "yes" or bestfilescwords_yesno =="y":
+               print("\nValues with min, max and average importance for all files\n")
+               print(dfmedian_n["mean"].describe())
+               print("""
+               You can input a value around average to select more/less important files corresponding
+               to value below average (more files with important and less important ones) or above it
+               (less files, i.e. almost only the important files).
+               """)
+               bestfilescwords_value = input("\nYour value: ")
+               bestfiles_cwords_df=dfmedian_n.loc[dfmedian_n["mean"] > float(bestfilescwords_value)]
+               print("\nTotal number of files in your corpus: " + str(len(df_median.index)))
+               print("\nNumber of selected files based on your words: " + str(len(bestfiles_cwords_df.index)))
+               print("""\n
+               We save the list of your files to disk.
+               You can use it to select those files from your corpus and perform
+               an analysis only on those files
+               """)
+               file = open(bestfileswords, "a")
+               bestfiles_cwords_df.to_csv(bestfileswords + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.csv', columns=[], header=False)
+               file.close()
+            elif bestfilescwords_yesno == "no" or bestfilescwords_yesno=="n":
+               print("\nNo list of files needed, we continue\n")
 
             # Visualisation of word embeddings: TSNE and scatter plot for given
             # terms
