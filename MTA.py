@@ -1668,6 +1668,7 @@ while loop:
 
         tsne_plot_similar_words(user_sw_lst, embeddings_sw, word_clusters, 0.7)
 
+
     elif key_in == 0:
         loop=False # This will make the while loop to end as not value of loop is set to False
     else:
