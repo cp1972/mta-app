@@ -546,7 +546,7 @@ def nmf_tm(numb_top):
 
 def lda_tm(numb_tlda):
     print("\n Topic-Model with LDA\n")
-    lda_sktl = LatentDirichletAllocation(n_components=numb_tlda, evaluate_every=-1, learning_method='online', n_jobs=-1, learning_offset=50., random_state=0)
+    lda_sktl = LatentDirichletAllocation(n_components=numb_tlda, evaluate_every=-1, learning_method='online', n_jobs=-1, learning_offset=50., random_state=100, batch_size=128)
     lda_sktl.fit_transform(lda_matrix)
     doctopic_lda = lda_sktl.fit_transform(lda_matrix)
     topicwords_lda = lda_sktl.components_
@@ -1569,8 +1569,8 @@ while loop:
                 print("You entered: " + contextwin)
                 num_features = int(rounded_s)
                 context = int(contextwin)
-                sample = 1e-3
-                w2vmodel = Word2Vec(tokenized_data, min_count=1, vector_size=num_features,workers=4, window=context, sample=sample, epochs=10)
+                sample = 1e-05
+                w2vmodel = Word2Vec(tokenized_data, min_count=5, vector_size=num_features,workers=6, window=context, sample=sample, epochs=5)
                 save_yn = input("\nSave your model for further use?(yes/no): ")
                 if save_yn == "yes" or save_yn == "y":
                     w2vmodel.save(w2vec)
