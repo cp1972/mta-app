@@ -60,7 +60,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.manifold import TSNE
 from sklearn.cluster import AffinityPropagation
-from sklearn.metrics import silhouette_score,davies_bouldin_score,v_measure_score
+from sklearn.metrics import silhouette_score,davies_bouldin_score,v_measure_score,calinski_harabasz_score
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import MinMaxScaler
 from gensim.models import Word2Vec
@@ -477,58 +477,40 @@ def findItem(theList, item):
 #
 # Make it a generator to reduce memory usage
 #
-def km_metrics_all(km_sc,km_sil,db_sc,gm_b,gm_sc):
+def km_metrics_all(km_sse,km_sc,km_ch,km_db):
     for i in range(2,num_c):
         km = KMeans(n_clusters=i, random_state=0,init="k-means++").fit(X_scaled)
-        preds = km.predict(X_scaled)
-        print(("-"*100))
-        print(("Score for number of cluster(s){}:{}".format(i,km.score(X_scaled))))
-        km_sc.append(-km.score(X_scaled))
-        silhouette = silhouette_score(X_scaled,preds)
-        km_sil.append(silhouette)
-        print(("Silhouette score for number of cluster(s) {}:{}".format(i,silhouette)))
-        db = davies_bouldin_score(X_scaled,preds)
-        db_sc.append(db)
-        print(("Davies Bouldin score for number of cluster(s) {}:{}".format(i,db)))
-        if len(corp_labels) < 2000:
-           gm =GaussianMixture(n_components=i,n_init=1,init_params='random',covariance_type='tied',verbose=0,random_state=0).fit(X_scaled)
-           print(("BIC for number of cluster(s){}:{}".format(i,gm.bic(X_scaled))))
-           print(("Log-likelihood score for number of cluster(s){}:{}".format(i,gm.score(X_scaled))))
-           print(("-"*100))
-           gm_b.append(-gm.bic(X_scaled))
-           gm_sc.append(gm.score(X_scaled))
+        km_sse[i] = km.inertia_
+        km_sc[i] = silhouette_score(X_scaled, km.fit_predict(X_scaled))
+        km_ch[i] = calinski_harabasz_score(X_scaled, km.labels_)
+        km_db[i] = davies_bouldin_score(X_scaled,km.labels_)
     # Delete unneeded objects
     del km
-    del preds
-    del silhouette
-    if len(corp_labels) < 2000:
-       del db
-       del gm
+    # Do the plot
     plt.clf()
     font_plt(plt_font)
     fig, axs = plt.subplots(2,2, sharex=True)
-    axs[0,0].scatter(x=[i for i in range(2,num_c)],y=km_silhouette,s=15,edgecolor='#b58900',alpha=0.5)
-    axs[0,0].set_title('Silhouette')
-    axs[0,1].scatter(x=[i for i in range(2,num_c)],y=db_score,s=15,edgecolor='#cb4b16',alpha=0.5)
-    axs[0,1].set_title('Davis Bouldin')
-    if len(corp_labels) < 2000:
-       axs[1,0].scatter(x=[i for i in range(2,num_c)],y=gm_bic,s=15,edgecolor='#dc322f', alpha=0.5)
-       axs[1,0].set_title('BIC')
-       axs[1,1].scatter(x=[i for i in range(2,num_c)],y=gm_score,s=15,edgecolor='#d33682',alpha=0.5)
-       axs[1,1].set_title('Log-Likelihood')
+    axs[0,0].scatter(x=list(km_sse.keys()),y=list(km_sse.values()),s=15,edgecolor='#b58900',alpha=0.5)
+    axs[0,0].set_title('Elbow')
+    axs[0,1].scatter(x=list(km_sc.keys()),y=list(km_sc.values()),s=15,edgecolor='#cb4b16',alpha=0.5)
+    axs[0,1].set_title('Silhouette')
+    axs[1,0].scatter(x=list(km_ch.keys()),y=list(km_ch.values()),s=15,edgecolor='#dc322f', alpha=0.5)
+    axs[1,0].set_title('Calinski Harabasz')
+    axs[1,1].scatter(x=list(km_db.keys()),y=list(km_db.values()),s=15,edgecolor='#d33682',alpha=0.5)
+    axs[1,1].set_title('Davies Bouldin')
     fig.tight_layout()
     font_plt(plt_font)
     for ax in axs.flat:
         ax.set(xlabel='Clusters', ylabel='Metrics')
     for ax in axs.flat:
         ax.label_outer()
+    plt.xticks(range(2, num_c))
     plt.locator_params(nbins=10, axis='x')
     if num_c > 20:
         plt.locator_params(nbins=10, axis='x')
     plt.yticks(fontsize=8)
     plt.savefig(clusters_metrics + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
-    yield km_sc, km_sil, db_sc, gm_b, gm_sc
-
+    yield km_sse, km_sc, km_ch, km_db
 #
 # Function to model the topics with NMF
 #
@@ -751,30 +733,30 @@ while loop:
         bnt_f = input("\nDo you want an automatic estimation of the best number of topics? (yes/no): ")
         print("\nYou entered: \n" + bnt_f)
         if bnt_f == "yes" or bnt_f == "y":
-            num_c =  int(input("\nMax. number of topics you think you would have in your text: "))
-            print("You entered: \n" + str(num_c))
-            print("\nWe calculate the best number of topics for NMF and LDA\n")
+            num_c_1 =  int(input("\nMax. number of topics you think you would have in your text: "))
+            print("You entered: \n" + str(num_c_1))
+            print("\nWe calculate the best number of topics for NMF and LDA. It can take time...\n")
+            # Increment 1 to num_c_1 because of indexes of dict beginning with 0
+            num_c = num_c_1 + 1
             #
-            ### Metrics: Silhouette, Davies Bouldin score, BIC and
-            # Log-Likelihood -- Save a plot with the results
+            ### Metrics: Elbow, Silhouette, Calinski Harabasz, Davies Bouldin score -- Save a plot with the results
 
             ks = list(range(2, num_c))
             X_scaled = dense_a.T
 
-            km_scores = []
-            km_silhouette = []
-            db_score = []
-            gm_bic= []
-            gm_score=[]
-            list(km_metrics_all(km_scores,km_silhouette,db_score,gm_bic,gm_score))
-            # Delete unneeded lists
-            del km_scores
+            km_elbow = {}
+            km_silhouette = {}
+            km_calinski = {}
+            km_bouldin= {}
+           # gm_score=[]
+            list(km_metrics_all(km_elbow,km_silhouette,km_calinski,km_bouldin))
+           # Delete unneeded lists
+            del km_elbow
             del km_silhouette
-            del db_score
-            del gm_bic
-            del gm_score
+            del km_calinski
+            del km_bouldin
             gc.collect()
-
+            print("\nDone! Look at Clusters_Metrics pdf file in your MTA to opt for best number of topics\n")
             # Bertopic
             print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
             print("""\n
