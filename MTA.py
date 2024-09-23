@@ -232,6 +232,14 @@ stops = [str(x.strip()) for x in open(p,'r',encoding="utf-8")]
 word_length_c = input("\nMinimal number of characters you want to have in a word between 2 and 9: ")
 print("You entered: " + word_length_c)
 #
+# Define a progress bar for some tasks
+def progress_bar(iteration, total, prefix='', suffix='', length=30, fill='█'):
+    percent = ("{0:.1f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
+    sys.stdout.flush()
+#
 # Label matrices -- function
 #
 def labeling(df):
@@ -484,6 +492,7 @@ def km_metrics_all(km_sse,km_sc,km_ch,km_db):
         km_sc[i] = silhouette_score(X_scaled, km.fit_predict(X_scaled))
         km_ch[i] = calinski_harabasz_score(X_scaled, km.labels_)
         km_db[i] = davies_bouldin_score(X_scaled,km.labels_)
+        progress_bar(i, num_c-1, prefix='Progress:', suffix='Complete', length=50)
     # Delete unneeded objects
     del km
     # Do the plot
@@ -756,7 +765,7 @@ while loop:
             del km_calinski
             del km_bouldin
             gc.collect()
-            print("\nDone! Look at Clusters_Metrics pdf file in your MTA to opt for best number of topics\n")
+            print("\n")
             # Bertopic
             print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
             print("""\n
@@ -1565,7 +1574,7 @@ while loop:
                   user_sw_lst.remove(item)
 
             print("\nBest similar words to your word(s) decreasing in importance from left to right\n")
-            similar_words = {given_term: [item[0] for item in w2vmodel.wv.most_similar([given_term]) if item[1] > 0.01] for given_term in user_sw_lst}
+            similar_words = {given_term: [item[0] for item in w2vmodel.wv.most_similar([given_term]) if item[1] > 0.001] for given_term in user_sw_lst}
             print("{:<15} {:<25}".format('Input word(s)','Similar words'))
             for k, v in similar_words.items():
                 words = v

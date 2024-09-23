@@ -3,7 +3,9 @@
 ## MTA version 1.9 -- September 2024 -- Minor release
 
   - Rewrite the function to crossvalidate the optimal number(s) of topics to speed up crossvalidation; take two new tests (naive Elbow and Calinski Harabasz) and reject two old ones (BIC and Gauss).
+  - Implement progress bar in crossvalidation operations.
   - Suppression of the stdin output of crossvalidation since it slows the process and does not add anything really useful to the interpretation of optimal number(s) of topics.
+  - Word2Vec takes more similar words to your input words in menu entry 4.
   - New facility to save list of files corresponding to cluster of words provided with menu entry 4; with this list, you can the corpus to retain only the files corresponding to the cluster of similar words attached to word(s) given at the MTA prompt in this menu. You can then perform a topic analysis on these selected documents. For sh/bash user, you could do the following to copy the needed files mentioned in the list to a new directory:
 
     - make a new directory: mkdir mynewdir
