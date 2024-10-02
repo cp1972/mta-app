@@ -52,7 +52,7 @@ python3.8 MTA.py.
 
 MTA will crash if your path is not writable for the user -- make sure you have sufficient permission on your path before processing. In doubt, ask your admin.
 
-**For old version of MTA before 1.7 only**:
+**For older version of MTA before 1.7 only**:
 
   * you miss two packages that you have to download [at Christoph Gohlke web page](https://www.lfd.uci.edu/~gohlke/pythonlibs/): these are 'pycairo' and 'wordcloud' -- choose the packages at the top of each list and download the suitable package for your system (either the 32-bit or the 64-bit package). For instance, look at the name of the file; f.ex. pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl means a package pycairo, version 1.18.0 for python 2.7 (cp27) and for the Windows 64 bits operating system; if you have Anaconda installed with python3.4 f.ex., then you must use a package with cp34 in the filename;
   * once downloaded, copy/paste these packages there where your Terminal has been opened -- if your Terminal shows a prompt with: '<base>C:\Users\Downloads', then make sure that your two packages are under 'C:\Users\Downloads'
@@ -84,13 +84,4 @@ Then, you also have to install the python-tk package -- given your OS, you'll fi
 pip3 install numpy pandas matplotlib \
 numexpr scikit-learn scipy gensim seaborn \
 community python-louvain bertopic
-```
-
-
-**With versions 1.6 of MTA below (deprecated)**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
-
-```
-pip3 install numpy pandas matplotlib \
-numexpr scikit-learn scipy gensim seaborn \
-community python-louvain wordcloud
 ```
