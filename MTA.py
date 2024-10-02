@@ -320,9 +320,9 @@ del corp_wod
 del corp_woe
 del corp_join
 gc.collect()
-
-# Make the main corpus corpus_wo
-corpus_wo = list(corp_wo)
+#
+# Make the main corpus corpus_wo -- remove punctuation without removing blank spaces
+corpus_wo = [re.sub('\W+',' ', i) for i in corp_wo]
 # Need corpus as real list later
 corpus_re = list(generate_corpus(in_files))
 #
@@ -400,7 +400,6 @@ dense_a = numpy.asarray(dense) # new with new numpy
 vocab = numpy.array(vectorize.get_feature_names_out())
 df_one = pandas.DataFrame(dense, columns=tf_names)
 df_median = labeling(df_one)
-
 # Delete unneeded matrices
 
 del df_one
@@ -689,6 +688,8 @@ def comp_nmflda_plot(number_topics):
             font_plt(plt_font)
             plt.yticks(rotation=0)
             plt.xticks(rotation=90)
+            plt.xlabel("LDA-Topics")
+            plt.ylabel('NMF-Topics')
             plt.savefig(similar_topics_nmflda + str(num_tof) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
     elif number_topics != num_tof:
         print("""
@@ -766,9 +767,15 @@ while loop:
             del km_bouldin
             gc.collect()
             print("\n")
-            # Bertopic
-            print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
-            print("""\n
+            print("\nDoes it make sense to evaluate the best number of topics with BERT Large Language Model?")
+            if len(df_median.columns) > 20000:
+               print("\nYes it does\n")
+               bnt_f2 = input("\nDo you want an estimation of the best number of topics based on BERT Large Language Model? Caution: this can take time (yes/no): ")
+               print("\nYou entered: \n" + bnt_f2)
+               if bnt_f2 == "yes" or bnt_f2 == "y":
+                  # Bertopic
+                  print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
+                  print("""\n
             BERTopic shows topics based on semantic similarities in your documents. If your
             documents are very similar in their contents, you will get few topics. If your
             documents are very dissimilar in their contents, you get more/a lot of topics.
@@ -785,52 +792,47 @@ while loop:
             - contribution of five best words to first topics
 
             You will find these files in your MTA-Results folder.
-            """)
-            embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-            umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.15, metric='cosine')
-            hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
-            vectorizer_model = lda_vectorize
+                  """)
+                  embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+                  umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.15, metric='cosine')
+                  hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
+                  vectorizer_model = lda_vectorize
 
-            bertmodel = BERTopic(
-               embedding_model=embedding_model,
-               umap_model=umap_model,
-               hdbscan_model=hdbscan_model,
-               vectorizer_model=vectorizer_model,
-               language="multilanguage")
+                  bertmodel = BERTopic(embedding_model=embedding_model,umap_model=umap_model,hdbscan_model=hdbscan_model,vectorizer_model=vectorizer_model,language="multilanguage")
 
-            try:
-               topics, probs = bertmodel.fit_transform(corpus_wo)
-               hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
+                  try:
+                     topics, probs = bertmodel.fit_transform(corpus_wo)
+                     hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
 
-               bertfreq = bertmodel.get_topic_info()
-               print("\nNumber of Texts in each BERTopic\n")
-               print(bertfreq)
+                     bertfreq = bertmodel.get_topic_info()
+                     print("\nNumber of Texts in each BERTopic\n")
+                     print(bertfreq)
 
-               bert_list_topicswords = []
-               for i in range(1,len(bertfreq.index)):
-                  bert_list = bertmodel.get_topic(bertfreq.iloc[i]["Topic"])
-                  bert_list_topicswords.append([item[0] for item in bert_list])
+                     bert_list_topicswords = []
+                     for i in range(1,len(bertfreq.index)):
+                        bert_list = bertmodel.get_topic(bertfreq.iloc[i]["Topic"])
+                        bert_list_topicswords.append([item[0] for item in bert_list])
 
-               bert_list_t = list(map(list, zip(*bert_list_topicswords)))
-               bert_list_df = pandas.DataFrame(bert_list_t[1:],columns=bert_list_t[0])
-               print("\nHierarchy of topics with BERT and semantically similar topics\n")
-               bertree = bertmodel.get_topic_tree(hierarchical_topics)
-               print(bertree)
-               print("\nBest words for BERTopics\n")
-               bertfreq_lst = bertfreq['Topic'].tolist()
-               bertfreq_lst_adj = bertfreq_lst[1:]
-               bert_list_df.columns = bertfreq_lst_adj
-               print(bert_list_df)
+                     bert_list_t = list(map(list, zip(*bert_list_topicswords)))
+                     bert_list_df = pandas.DataFrame(bert_list_t[1:],columns=bert_list_t[0])
+                     print("\nHierarchy of topics with BERT and semantically similar topics\n")
+                     bertree = bertmodel.get_topic_tree(hierarchical_topics)
+                     print(bertree)
+                     print("\nBest words for BERTopics\n")
+                     bertfreq_lst = bertfreq['Topic'].tolist()
+                     bertfreq_lst_adj = bertfreq_lst[1:]
+                     bert_list_df.columns = bertfreq_lst_adj
+                     print(bert_list_df)
 
-               # Bert Topics Plot
-               embeddings = bertmodel._extract_embeddings(corpus_wo)
-               umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.15, metric='cosine').fit(embeddings)
-               df_umap = pandas.DataFrame(umap_model.embedding_, columns=["x", "y"])
-               df_umap["topic"] = topics
+                     # Bert Topics Plot
+                     embeddings = bertmodel._extract_embeddings(corpus_wo)
+                     umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.15, metric='cosine').fit(embeddings)
+                     df_umap = pandas.DataFrame(umap_model.embedding_, columns=["x", "y"])
+                     df_umap["topic"] = topics
 
-               # Fontsize and colors for Bertplot
-               fontsize = 10
-               cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
+                     # Fontsize and colors for Bertplot
+                     fontsize = 10
+                     cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
                                                         '#03A9F4', # Blue
                                                         '#4CAF50', # Green
                                                         '#80CBC4', # FFEB3B
@@ -847,37 +849,40 @@ while loop:
                                                         '#F48FB1', # Light Pink
                                                         ])
 
-               # Slice data
-               to_plot = df_umap.copy()
-               to_plot[df_umap.topic >= len(bertfreq.index)] = -1
-               outliers = to_plot.loc[to_plot.topic == -1]
-               non_outliers = to_plot.loc[to_plot.topic != -1]
+                     # Slice data
+                     to_plot = df_umap.copy()
+                     to_plot[df_umap.topic >= len(bertfreq.index)] = -1
+                     outliers = to_plot.loc[to_plot.topic == -1]
+                     non_outliers = to_plot.loc[to_plot.topic != -1]
 
-               # Visualize outliers + inliers
-               fig, ax = plt.subplots(figsize=(10, 12))
-               scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
-               scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
+                     # Visualize outliers + inliers
+                     fig, ax = plt.subplots(figsize=(10, 12))
+                     scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
+                     scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
 
-               # Add topic name to clusters
-               centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
-               for row in centroids.iterrows():
-                  topic = int(row[1].topic)
-                  text = f"{topic}: " + "_".join([x[0] for x in bertmodel.get_topic(topic)[:3]])
-                  ax.text(row[1].x, row[1].y*1.01, text, fontsize=fontsize, horizontalalignment='center')
+                     # Add topic name to clusters
+                     centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
+                     for row in centroids.iterrows():
+                        topic = int(row[1].topic)
+                        text = f"{topic}: " + "_".join([x[0] for x in bertmodel.get_topic(topic)[:3]])
+                        ax.text(row[1].x, row[1].y*1.01, text, fontsize=fontsize, horizontalalignment='center')
 
-               # Save Bertplot
-               ax.text(0.99, 0.01, f"BERTopic", transform=ax.transAxes, horizontalalignment="right", color="black")
-               ax.set_frame_on(False)
-               plt.xticks([], [])
-               plt.yticks([], [])
-               plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
+                     # Save Bertplot
+                     ax.text(0.99, 0.01, f"BERTopic", transform=ax.transAxes, horizontalalignment="right", color="black")
+                     ax.set_frame_on(False)
+                     plt.xticks([], [])
+                     plt.yticks([], [])
+                     plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
 
-               # Save plots of words per topics
-               fig = bertmodel.visualize_barchart()
-               fig.write_html(bertbar)
-
-            except ValueError:
-               print("\nNot enough vocabulary to perform Bertopic -- Skip")
+                     # Save plots of words per topics
+                     fig = bertmodel.visualize_barchart()
+                     fig.write_html(bertbar)
+                  except ValueError:
+                     print("\nNot enough vocabulary to perform Bertopic -- Skip")
+               if bnt_f2 == "no" or bnt_f2 == "n":
+                  print("\nNo estimation with BERT, we continue")
+            if len(df_median.columns) < 20000:
+               print("\nNo, it does not\n")
 
         elif bnt_f == "no" or bnt_f == "n":
             print("\nNo automatic estimation -- we continue\n")
