@@ -261,7 +261,7 @@ def remove_stopwords(corpus):
     for sentence in corpus:
         temp_list=[]
         for word in sentence.lower().split():
-            if word.lower().strip('"') not in stops and len(word)>=int(word_length_c):
+            if word.lower().strip('"') not in stops:
                 temp_list.append(word)
         output_array.append(' '.join(temp_list))
     return output_array
@@ -312,8 +312,6 @@ corp_join = [' '.join(word for word in sent.split() if not (word.startswith('www
 corp_wo = remove_space(corp_join)
 
 # Deleting unneeded corpus
-
-del corp_gen
 del corp_woa
 del corp_woc
 del corp_wod
@@ -323,8 +321,9 @@ gc.collect()
 #
 # Make the main corpus corpus_wo -- remove punctuation without removing blank spaces
 corpus_wo = [re.sub('\W+',' ', i) for i in corp_wo]
-# Need corpus as real list later
-corpus_re = list(generate_corpus(in_files))
+# Need complete corpus as real list later
+corpus_re = list(corp_gen)
+del corp_gen
 #
 print("\n PROCESSING YOUR TEXTS \n")
 #
@@ -683,9 +682,10 @@ def comp_nmflda_plot(number_topics):
         mask[numpy.triu_indices_from(mask)] = True
 
         with sns.axes_style("white"):
-            ax = sns.heatmap(df_nmflda, mask=mask, fmt='.4f', cmap="PiYG", xticklabels=True, yticklabels=True)
+            ax = sns.heatmap(df_nmflda, mask=mask, fmt='.4f', cmap="PiYG", vmin=-1, vmax=1, annot=True, xticklabels=True, yticklabels=True)
             lang_comp(plt_user)
             font_plt(plt_font)
+            plt.tick_params(labelsize=9)
             plt.yticks(rotation=0)
             plt.xticks(rotation=90)
             plt.xlabel("LDA-Topics")
@@ -1078,9 +1078,10 @@ while loop:
             mask[numpy.triu_indices_from(mask)] = True
 
             with sns.axes_style("white"):
-                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.4f',cmap="PiYG", xticklabels=True, yticklabels=True)
+                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.4f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                 lang_corr(plt_user)
                 font_plt(plt_font)
+                plt.tick_params(labelsize=9)
                 plt.yticks(rotation=0)
                 if len(dfcorr_l.index) > 50:
                     plt.tick_params(
@@ -1090,6 +1091,7 @@ while loop:
                             top=False,         # ticks along the top edge are off
                             labelbottom=False, right='off', left='off', labelleft='off')
                 elif len(dfcorr_l.index) < 50:
+                    plt.tick_params(labelsize=9)
                     plt.xticks(rotation=90)
                 plt.savefig(similar_texts_nmf + str(num_topics) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
         elif len(dfcorr_l.index) >= 80:
@@ -1274,8 +1276,9 @@ while loop:
                 mask[numpy.triu_indices_from(mask)] = True
 
                 with sns.axes_style("white"):
-                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.4f',cmap="PiYG", xticklabels=True, yticklabels=True)
+                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.4f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                     lang_corr(plt_user)
+                    plt.tick_params(labelsize=9)
                     plt.yticks(rotation=0)
                     if len(dfcorr_lda.index) > 50:
                         plt.tick_params(
@@ -1285,6 +1288,7 @@ while loop:
                                 top=False,         # ticks along the top edge are off
                                 labelbottom=False, right='off', left='off', labelleft='off')
                     elif len(dfcorr_lda.index) < 50:
+                        plt.tick_params(labelsize=9)
                         plt.xticks(rotation=90)
                     plt.savefig(similar_texts_lda + str(num_tof) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
             elif len(dfcorr_lda.index) >= 80:
