@@ -308,7 +308,7 @@ corp_woa = remove_stopwords(corp_gen)
 corp_woc = remove_digits(corp_woa)
 corp_wod = remove_url(corp_woc)
 corp_woe = remove_dots(corp_wod)
-corp_join = [' '.join(word for word in sent.split() if not (word.startswith('www') or word.startswith('http')) and len(word)>=int(word_length_c) and word not in stops) for sent in corp_woe]
+corp_join = [' '.join(word for word in sent.split() if not (word.startswith('www') or word.startswith('http')) and word not in stops) for sent in corp_woe]
 corp_wo = remove_space(corp_join)
 
 # Deleting unneeded corpus
@@ -324,7 +324,6 @@ corpus_woa = [re.sub('\W+',' ', i) for i in corp_wo]
 corpus_wo = [" ".join([word for word in sentences.split(" ") if len(word)>=int(word_length_c)]) for sentences in corpus_woa]
 # Need complete corpus as real list later
 corpus_re = list(re.sub("[^a-zA-Z'.,;:!?-]+",' ', i) for i in corp_gen)
-print(corpus_re)
 del corpus_woa
 del corp_gen
 gc.collect()

@@ -2,7 +2,8 @@
 
 ## MTA version 1.9 -- September 2024 -- Minor release
 
-  - Cosmetic change for chart comparing NMF and LDA topics -- add explicit labels on x and y axes.
+  - Cosmetic changes for heatmaps comparing NMF and LDA topics -- explicit labels on x and y axes, smaller fonts for labels.
+  - Better regexp for parsing corpus.
   - Conditional statement for BERT -- MTA checks automatically if you seem to have enough texts to perform a BERT evaluation of best number of topics.
   - Rewrite the function to crossvalidate the optimal number(s) of topics to speed up crossvalidation; take two new tests (naive Elbow and Calinski Harabasz) and reject two old ones (BIC and Gauss).
   - Implement progress bar in crossvalidation operations.
