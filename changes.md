@@ -2,6 +2,7 @@
 
 ## MTA version 1.9 -- September 2024 -- Minor release
 
+  - Lazy loading of modules for better RAM management and better code execution.
   - Cosmetic changes for heatmaps comparing NMF and LDA topics -- explicit labels on x and y axes, smaller fonts for labels.
   - Better regexp for parsing corpus.
   - Conditional statement for BERT -- MTA checks automatically if you seem to have enough texts to perform a BERT evaluation of best number of topics.
