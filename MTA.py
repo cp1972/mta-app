@@ -12,64 +12,28 @@ import codecs
 import errno
 import glob
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false" # prevent forked process in huggingface/tokenizers
+from os.path import expanduser
 import re, string
 import locale
 import math
 import pandas
 import numpy
 import matplotlib
+import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
+from matplotlib import rc, rcParams
 matplotlib.use('Agg')
 matplotlib.rc('figure', max_open_warning = 0)
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 import scipy.spatial as sp, scipy.cluster.hierarchy as hc
-import tkinter
+from scipy.sparse import csr_matrix
 import logging
 import heapq
 import datetime
 import seaborn as sns
 import community
-import gensim
 import importlib
-from tqdm.contrib.concurrent import process_map
-from os.path import expanduser
-from matplotlib.font_manager import FontProperties
-from bertopic import BERTopic # new install bertopic[visualization]
-from umap import UMAP
-from hdbscan import HDBSCAN
-from sentence_transformers import SentenceTransformer
-logging.getLogger('matplotlib.font_manager').disabled = True
-from matplotlib import rc, rcParams
-from collections import defaultdict, Counter
-from scipy.spatial.distance import cosine
-from scipy import cluster
-from scipy.spatial import distance
-from scipy.cluster.hierarchy import cophenet, dendrogram, linkage
-from scipy.spatial.distance import pdist
-from scipy.sparse import csr_matrix
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfTransformer
-from sklearn.decomposition import LatentDirichletAllocation
-from sklearn import decomposition
-from sklearn import metrics
-from sklearn import cluster
-from sklearn.decomposition import TruncatedSVD
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from sklearn.manifold import TSNE
-from sklearn.cluster import AffinityPropagation
-from sklearn.metrics import silhouette_score,davies_bouldin_score,v_measure_score,calinski_harabasz_score
-from sklearn.mixture import GaussianMixture
-from sklearn.preprocessing import MinMaxScaler
-from gensim.models import Word2Vec
-from gensim import similarities, corpora, models
-from gensim.similarities.docsim import Similarity
-from gensim.utils import simple_preprocess
-from gensim.models import CoherenceModel
-from gensim.corpora.dictionary import Dictionary
 from itertools import cycle
+logging.getLogger('matplotlib.font_manager').disabled = True
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 pandas.options.mode.chained_assignment = None  # default='warn'
 importlib.reload(sys) # pour garder le code en utf-8
@@ -261,7 +225,7 @@ def remove_stopwords(corpus):
     for sentence in corpus:
         temp_list=[]
         for word in sentence.lower().split():
-            if word.lower().strip('"') not in stops and len(word)>=int(word_length_c):
+            if word.lower().strip('"') not in stops:
                 temp_list.append(word)
         output_array.append(' '.join(temp_list))
     return output_array
@@ -308,12 +272,10 @@ corp_woa = remove_stopwords(corp_gen)
 corp_woc = remove_digits(corp_woa)
 corp_wod = remove_url(corp_woc)
 corp_woe = remove_dots(corp_wod)
-corp_join = [' '.join(word for word in sent.split() if not (word.startswith('www') or word.startswith('http')) and len(word)>=int(word_length_c) and word not in stops) for sent in corp_woe]
+corp_join = [' '.join(word for word in sent.split() if not (word.startswith('www') or word.startswith('http')) and word not in stops) for sent in corp_woe]
 corp_wo = remove_space(corp_join)
 
 # Deleting unneeded corpus
-
-del corp_gen
 del corp_woa
 del corp_woc
 del corp_wod
@@ -322,9 +284,13 @@ del corp_join
 gc.collect()
 #
 # Make the main corpus corpus_wo -- remove punctuation without removing blank spaces
-corpus_wo = [re.sub('\W+',' ', i) for i in corp_wo]
-# Need corpus as real list later
-corpus_re = list(generate_corpus(in_files))
+corpus_woa = [re.sub('\W+',' ', i) for i in corp_wo]
+corpus_wo = [" ".join([word for word in sentences.split(" ") if len(word)>=int(word_length_c)]) for sentences in corpus_woa]
+# Need complete corpus as real list later
+corpus_re = list(re.sub("[^a-zA-Z'.,;:!?-]+",' ', i) for i in corp_gen)
+del corpus_woa
+del corp_gen
+gc.collect()
 #
 print("\n PROCESSING YOUR TEXTS \n")
 #
@@ -344,6 +310,10 @@ tokenized_data = list(str(liist).split(' ') for liist in tokenized_data_r)
 print("\n Done ")
 
 print("\n TUNING PARAMETERS ")
+
+from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer, TfidfTransformer
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 
 print("""
 It might be a good idea to discard words rarely or too frequently appearing in your corpus.
@@ -522,6 +492,12 @@ def km_metrics_all(km_sse,km_sc,km_ch,km_db):
 #
 # Function to model the topics with NMF
 #
+from scipy.cluster.hierarchy import cophenet, dendrogram, linkage
+from scipy.spatial.distance import cosine, pdist
+from sklearn import decomposition
+from sklearn.cluster import KMeans, AffinityPropagation
+from sklearn.metrics import silhouette_score,davies_bouldin_score,v_measure_score,calinski_harabasz_score
+
 def nmf_tm(numb_top):
     num_top_words = len(df_median.columns)
     print("\nTopic-Model with NMF\n")
@@ -575,19 +551,19 @@ def top_wlda(tw_list_lda):
     return tw_list_lda,topic_words_lda_df_T
 
 # Function for the data to be shown as wordclouds
-
-def wordcl(top_lst_a,top_lst_b):
-
-    for i in topicwords:
-        for j in i[:50]:
-            top_lst_a.append(j)
-
-    topic_n = []
-    for i in topic_words:
-        for j in i[:50]:
-            top_lst_b.append(j)
-
-    return top_lst_a,top_lst_b
+#
+#def wordcl(top_lst_a,top_lst_b):
+#
+#    for i in topicwords:
+#        for j in i[:50]:
+#            top_lst_a.append(j)
+#
+#    topic_n = []
+#    for i in topic_words:
+#        for j in i[:50]:
+#            top_lst_b.append(j)
+#
+#    return top_lst_a,top_lst_b
 
 # Function to plot in the language of the user -- Weight of topics
 
@@ -683,9 +659,10 @@ def comp_nmflda_plot(number_topics):
         mask[numpy.triu_indices_from(mask)] = True
 
         with sns.axes_style("white"):
-            ax = sns.heatmap(df_nmflda, mask=mask, fmt='.4f', cmap="PiYG", xticklabels=True, yticklabels=True)
+            ax = sns.heatmap(df_nmflda, mask=mask, fmt='.4f', cmap="PiYG", vmin=-1, vmax=1, annot=True, xticklabels=True, yticklabels=True)
             lang_comp(plt_user)
             font_plt(plt_font)
+            plt.tick_params(labelsize=8)
             plt.yticks(rotation=0)
             plt.xticks(rotation=90)
             plt.xlabel("LDA-Topics")
@@ -750,15 +727,12 @@ while loop:
             num_c = num_c_1 + 1
             #
             ### Metrics: Elbow, Silhouette, Calinski Harabasz, Davies Bouldin score -- Save a plot with the results
-
             ks = list(range(2, num_c))
             X_scaled = dense_a.T
-
             km_elbow = {}
             km_silhouette = {}
             km_calinski = {}
             km_bouldin= {}
-           # gm_score=[]
             list(km_metrics_all(km_elbow,km_silhouette,km_calinski,km_bouldin))
            # Delete unneeded lists
             del km_elbow
@@ -768,14 +742,16 @@ while loop:
             gc.collect()
             print("\n")
             print("\nDoes it make sense to evaluate the best number of topics with BERT Large Language Model?")
-            if len(df_median.columns) > 20000:
-               print("\nYes it does\n")
-               bnt_f2 = input("\nDo you want an estimation of the best number of topics based on BERT Large Language Model? Caution: this can take time (yes/no): ")
-               print("\nYou entered: \n" + bnt_f2)
-               if bnt_f2 == "yes" or bnt_f2 == "y":
-                  # Bertopic
-                  print("\nTrying BERTopic model on your dataset if enough vocabulary (more than 20000 remaining words)\n")
-                  print("""\n
+            if len(df_median.columns) > 30000:
+               print("\nYes it does. Loading BERTopic...\n")
+               from bertopic import BERTopic # new install bertopic[visualization]
+               from umap import UMAP
+               from hdbscan import HDBSCAN
+               from sentence_transformers import SentenceTransformer
+               os.environ["TOKENIZERS_PARALLELISM"] = "false" # prevent forked process in huggingface/tokenizers
+               # Bertopic
+               print("\nTrying BERTopic model on your dataset if enough vocabulary")
+               print("""\n
             BERTopic shows topics based on semantic similarities in your documents. If your
             documents are very similar in their contents, you will get few topics. If your
             documents are very dissimilar in their contents, you get more/a lot of topics.
@@ -793,46 +769,46 @@ while loop:
 
             You will find these files in your MTA-Results folder.
                   """)
-                  embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-                  umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.15, metric='cosine')
-                  hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
-                  vectorizer_model = lda_vectorize
+               embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+               umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric='cosine')
+               hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
+               vectorizer_model = lda_vectorize
 
-                  bertmodel = BERTopic(embedding_model=embedding_model,umap_model=umap_model,hdbscan_model=hdbscan_model,vectorizer_model=vectorizer_model,language="multilanguage")
+               bertmodel = BERTopic(embedding_model=embedding_model,umap_model=umap_model,hdbscan_model=hdbscan_model,vectorizer_model=vectorizer_model,language="multilanguage")
 
-                  try:
-                     topics, probs = bertmodel.fit_transform(corpus_wo)
-                     hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
+               try:
+                  topics, probs = bertmodel.fit_transform(corpus_wo)
+                  hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
 
-                     bertfreq = bertmodel.get_topic_info()
-                     print("\nNumber of Texts in each BERTopic\n")
-                     print(bertfreq)
+                  bertfreq = bertmodel.get_topic_info()
+                  print("\nNumber of Texts in each BERTopic\n")
+                  print(bertfreq)
 
-                     bert_list_topicswords = []
-                     for i in range(1,len(bertfreq.index)):
-                        bert_list = bertmodel.get_topic(bertfreq.iloc[i]["Topic"])
-                        bert_list_topicswords.append([item[0] for item in bert_list])
+                  bert_list_topicswords = []
+                  for i in range(1,len(bertfreq.index)):
+                     bert_list = bertmodel.get_topic(bertfreq.iloc[i]["Topic"])
+                     bert_list_topicswords.append([item[0] for item in bert_list])
 
-                     bert_list_t = list(map(list, zip(*bert_list_topicswords)))
-                     bert_list_df = pandas.DataFrame(bert_list_t[1:],columns=bert_list_t[0])
-                     print("\nHierarchy of topics with BERT and semantically similar topics\n")
-                     bertree = bertmodel.get_topic_tree(hierarchical_topics)
-                     print(bertree)
-                     print("\nBest words for BERTopics\n")
-                     bertfreq_lst = bertfreq['Topic'].tolist()
-                     bertfreq_lst_adj = bertfreq_lst[1:]
-                     bert_list_df.columns = bertfreq_lst_adj
-                     print(bert_list_df)
+                  bert_list_t = list(map(list, zip(*bert_list_topicswords)))
+                  bert_list_df = pandas.DataFrame(bert_list_t[1:],columns=bert_list_t[0])
+                  print("\nHierarchy of topics with BERT and semantically similar topics\n")
+                  bertree = bertmodel.get_topic_tree(hierarchical_topics)
+                  print(bertree)
+                  print("\nBest words for BERTopics\n")
+                  bertfreq_lst = bertfreq['Topic'].tolist()
+                  bertfreq_lst_adj = bertfreq_lst[1:]
+                  bert_list_df.columns = bertfreq_lst_adj
+                  print(bert_list_df)
 
-                     # Bert Topics Plot
-                     embeddings = bertmodel._extract_embeddings(corpus_wo)
-                     umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.15, metric='cosine').fit(embeddings)
-                     df_umap = pandas.DataFrame(umap_model.embedding_, columns=["x", "y"])
-                     df_umap["topic"] = topics
+                  # Bert Topics Plot
+                  embeddings = bertmodel._extract_embeddings(corpus_wo)
+                  umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.0, metric='cosine').fit(embeddings)
+                  df_umap = pandas.DataFrame(umap_model.embedding_, columns=["x", "y"])
+                  df_umap["topic"] = topics
 
-                     # Fontsize and colors for Bertplot
-                     fontsize = 10
-                     cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
+                  # Fontsize and colors for Bertplot
+                  fontsize = 12
+                  cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
                                                         '#03A9F4', # Blue
                                                         '#4CAF50', # Green
                                                         '#80CBC4', # FFEB3B
@@ -849,41 +825,38 @@ while loop:
                                                         '#F48FB1', # Light Pink
                                                         ])
 
-                     # Slice data
-                     to_plot = df_umap.copy()
-                     to_plot[df_umap.topic >= len(bertfreq.index)] = -1
-                     outliers = to_plot.loc[to_plot.topic == -1]
-                     non_outliers = to_plot.loc[to_plot.topic != -1]
+                  # Slice data
+                  to_plot = df_umap.copy()
+                  to_plot[df_umap.topic >= len(bertfreq.index)] = -1
+                  outliers = to_plot.loc[to_plot.topic == -1]
+                  non_outliers = to_plot.loc[to_plot.topic != -1]
 
-                     # Visualize outliers + inliers
-                     fig, ax = plt.subplots(figsize=(10, 12))
-                     scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
-                     scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
+                  # Visualize outliers + inliers
+                  fig, ax = plt.subplots(figsize=(10, 12))
+                  scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
+                  scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
 
-                     # Add topic name to clusters
-                     centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
-                     for row in centroids.iterrows():
-                        topic = int(row[1].topic)
-                        text = f"{topic}: " + "_".join([x[0] for x in bertmodel.get_topic(topic)[:3]])
-                        ax.text(row[1].x, row[1].y*1.01, text, fontsize=fontsize, horizontalalignment='center')
+                  # Add topic name to clusters
+                  centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
+                  for row in centroids.iterrows():
+                     topic = int(row[1].topic)
+                     text = f"{topic}: " + "_".join([x[0] for x in bertmodel.get_topic(topic)[:3]])
+                     ax.text(row[1].x, row[1].y*1.01, text, fontsize=fontsize, horizontalalignment='center')
 
-                     # Save Bertplot
-                     ax.text(0.99, 0.01, f"BERTopic", transform=ax.transAxes, horizontalalignment="right", color="black")
-                     ax.set_frame_on(False)
-                     plt.xticks([], [])
-                     plt.yticks([], [])
-                     plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
+                  # Save Bertplot
+                  ax.text(0.99, 0.01, f"BERTopic", transform=ax.transAxes, horizontalalignment="right", color="black")
+                  ax.set_frame_on(False)
+                  plt.xticks([], [])
+                  plt.yticks([], [])
+                  plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
 
-                     # Save plots of words per topics
-                     fig = bertmodel.visualize_barchart()
-                     fig.write_html(bertbar)
-                  except ValueError:
-                     print("\nNot enough vocabulary to perform Bertopic -- Skip")
-               if bnt_f2 == "no" or bnt_f2 == "n":
-                  print("\nNo estimation with BERT, we continue")
-            if len(df_median.columns) < 20000:
+                  # Save plots of words per topics
+                  fig = bertmodel.visualize_barchart()
+                  fig.write_html(bertbar)
+               except ValueError:
+                  print("\nNot enough vocabulary to perform Bertopic -- Skip")
+            elif len(df_median.columns) < 30000:
                print("\nNo, it does not\n")
-
         elif bnt_f == "no" or bnt_f == "n":
             print("\nNo automatic estimation -- we continue\n")
 
@@ -946,7 +919,7 @@ while loop:
 
         topic_w = []
         topic_n = []
-        wordcl(topic_w,topic_n)
+        #wordcl(topic_w,topic_n)
         topic_tuple = list(zip(topic_n, topic_w))
 
         topic_df = pandas.DataFrame(topic_tuple, columns=['Words','Values'])
@@ -1078,9 +1051,10 @@ while loop:
             mask[numpy.triu_indices_from(mask)] = True
 
             with sns.axes_style("white"):
-                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.4f',cmap="PiYG", xticklabels=True, yticklabels=True)
+                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.2f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                 lang_corr(plt_user)
                 font_plt(plt_font)
+                plt.tick_params(labelsize=8)
                 plt.yticks(rotation=0)
                 if len(dfcorr_l.index) > 50:
                     plt.tick_params(
@@ -1090,6 +1064,7 @@ while loop:
                             top=False,         # ticks along the top edge are off
                             labelbottom=False, right='off', left='off', labelleft='off')
                 elif len(dfcorr_l.index) < 50:
+                    plt.tick_params(labelsize=8)
                     plt.xticks(rotation=90)
                 plt.savefig(similar_texts_nmf + str(num_topics) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
         elif len(dfcorr_l.index) >= 80:
@@ -1107,6 +1082,7 @@ while loop:
         top_lda = input("\nDo you want to calculate a topic model with the LDA algorithm (yes/no): ")
         print("You entered: " + str(top_lda))
         if top_lda == "yes" or top_lda == "y":
+            from sklearn.decomposition import LatentDirichletAllocation
             num_tof =  int(input("\nGive a number of topics for LDA (same as NMF f.ex., or another one): "))
             print("You entered: " + str(num_tof))
             lda_sktl, doctopic_lda, topicwords_lda, linkage_doc_lda, coph_corr_lda = lda_tm(num_tof)
@@ -1149,7 +1125,7 @@ while loop:
 
             topic_w_lda = []
             topic_n_lda = []
-            wordcl(topic_w_lda,topic_n_lda)
+            #wordcl(topic_w_lda,topic_n_lda)
 
             topic_tuple_lda = list(zip(topic_n_lda, topic_w_lda))
             topic_df_lda = pandas.DataFrame(topic_tuple_lda, columns=['Words','Values'])
@@ -1274,8 +1250,9 @@ while loop:
                 mask[numpy.triu_indices_from(mask)] = True
 
                 with sns.axes_style("white"):
-                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.4f',cmap="PiYG", xticklabels=True, yticklabels=True)
+                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.2f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                     lang_corr(plt_user)
+                    plt.tick_params(labelsize=8)
                     plt.yticks(rotation=0)
                     if len(dfcorr_lda.index) > 50:
                         plt.tick_params(
@@ -1285,6 +1262,7 @@ while loop:
                                 top=False,         # ticks along the top edge are off
                                 labelbottom=False, right='off', left='off', labelleft='off')
                     elif len(dfcorr_lda.index) < 50:
+                        plt.tick_params(labelsize=8)
                         plt.xticks(rotation=90)
                     plt.savefig(similar_texts_lda + str(num_tof) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
             elif len(dfcorr_lda.index) >= 80:
@@ -1548,6 +1526,12 @@ while loop:
             # Making a word2vec model for words embedding and words associations
             #
             print("\n MAKING A WORD2VEC MODEL WITH YOUR TEXTS FOR SIMILARITIES \n")
+            import gensim
+            from gensim.models import Word2Vec, CoherenceModel
+            from gensim import similarities, corpora
+            from gensim.similarities.docsim import Similarity
+            from gensim.utils import simple_preprocess
+            from gensim.corpora.dictionary import Dictionary
             model_yesno = input("\nLoad an existing w2vec model (yes/no)?: ")
             print("You entered: " + model_yesno)
 
@@ -1621,6 +1605,8 @@ while loop:
             # Visualisation of word embeddings: TSNE and scatter plot for given
             # terms
             #
+            import matplotlib.cm as cm
+            from sklearn.manifold import TSNE
             def tsnescatterplot(model, word):
 
                 arr = numpy.empty((0,int(rounded_s)), dtype='f')

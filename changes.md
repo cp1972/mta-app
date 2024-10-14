@@ -2,13 +2,15 @@
 
 ## MTA version 1.9 -- September 2024 -- Minor release
 
-  - Cosmetic change for chart comparing NMF and LDA topics -- add explicit labels on x and y axes.
+  - Lazy loading of modules for better RAM management and better code execution.
+  - Cosmetic changes for heatmaps comparing NMF and LDA topics -- explicit labels on x and y axes, smaller fonts for labels.
+  - Better regexp for parsing corpus.
   - Conditional statement for BERT -- MTA checks automatically if you seem to have enough texts to perform a BERT evaluation of best number of topics.
   - Rewrite the function to crossvalidate the optimal number(s) of topics to speed up crossvalidation; take two new tests (naive Elbow and Calinski Harabasz) and reject two old ones (BIC and Gauss).
   - Implement progress bar in crossvalidation operations.
   - Suppression of the stdin output of crossvalidation since it slows the process and does not add anything really useful to the interpretation of optimal number(s) of topics.
   - Word2Vec takes more similar words to your input words in menu entry 4.
-  - New facility to save list of files corresponding to cluster of words provided with menu entry 4; with this list, you can the corpus to retain only the files corresponding to the cluster of similar words attached to word(s) given at the MTA prompt in this menu. You can then perform a topic analysis on these selected documents. For sh/bash user, you could do the following to copy the needed files mentioned in the list to a new directory:
+  - New facility to save list of files corresponding to cluster of words provided with menu entry 4; with this list, you can retain only the files corresponding to the cluster of similar words attached to word(s) given at the MTA prompt in this menu. You can then perform a topic analysis on these selected documents. For sh/bash/zsh/fish user, you could do the following to copy the needed files mentioned in the list to a new directory:
 
     - make a new directory: mkdir mynewdir
     - use the following onliner: for file in `cat BestFiles_ChoosenWords_dateofthefile.csv`; do cp "$file" /path/to/mynewdir ; done
@@ -27,7 +29,7 @@ MTA3-1.7 is a major release with significant improvements/changes compared to ot
 
 Overview of major changes:
 
-  - **new Berttopic models** (neural language models or so-called AI models) to estimate the minimal/maximal number of topics in your corpus if you have a significant corpus (more than 80 documents) -- **Please install bertopic library like this: pip3 install bertopic**;
+  - **new Bertopic models** (neural language models or so-called Large Language models from Google) to estimate the minimal/maximal number of topics in your corpus if you have a significant corpus (big vocabulary) -- **Please refer to the install document to know how to deal with the installation of bertopic and hdbscan**;
   - put the word2vec model at the specific menu 4 to generate it on demand if you want to use the utilities in this menu; with this, we improve our RAM management drastically! As an example, analyzing 15.000 newspapers articles as with MTA3-1.6.py (see below) requires now less than 3 GB RAM, and MTA scales significantly better when menu 4 is used
   - simplification of the outputs, i.e. wordclouds have been removed; there are several reasons for this, because the generation of wordclouds is computer intensive for no noticeable analytical gain, and because you can generate your clouds outside of MTA quickly in our days, using the weight of words generated with MTA btw;
   - rewriting the function for the kmeans++ estimates, enabling the interpretation of the best number of topics; this function now performs the given tests, skipping the gaussian mixture if you have more than 2000 documents (because it is too slow on regular desk computers).
