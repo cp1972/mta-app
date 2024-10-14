@@ -1051,7 +1051,7 @@ while loop:
             mask[numpy.triu_indices_from(mask)] = True
 
             with sns.axes_style("white"):
-                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.4f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
+                ax = sns.heatmap(dfcorr_l, mask=mask, fmt='.2f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                 lang_corr(plt_user)
                 font_plt(plt_font)
                 plt.tick_params(labelsize=8)
@@ -1250,7 +1250,7 @@ while loop:
                 mask[numpy.triu_indices_from(mask)] = True
 
                 with sns.axes_style("white"):
-                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.4f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
+                    ax = sns.heatmap(dfcorr_lda, mask=mask, fmt='.2f',cmap="PiYG", vmin=-1, vmax=1, xticklabels=True, yticklabels=True)
                     lang_corr(plt_user)
                     plt.tick_params(labelsize=8)
                     plt.yticks(rotation=0)
