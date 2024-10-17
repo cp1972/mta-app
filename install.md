@@ -28,6 +28,7 @@ It might be that windows users -- depending on their version of windows -- have 
 
 ```
 pip install python-qt5
+pip install pyqt5-tools <-- alternatively, if first line does not work or qt5 already installed
 ```
 
 With the new bertopic feature, the installation might throw errors with hdbscan. One solution is, first, to update pip
@@ -39,7 +40,7 @@ pip install --upgrade pip
 and then to install python-dev-tools with updated pip (not always needed) and hdbscan with conda, like this:
 
 ```
-pip install python-dev-tools --user --upgrade
+pip install python-dev-tools --user --upgrade <-- might be not needed
 
 conda install -c conda-forge hdbscan
 ```
