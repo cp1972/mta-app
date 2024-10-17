@@ -2,14 +2,15 @@
 
 You can automate the use of MTA easily in order to optimize your workflow. To do this, you have two ways.
 
-The first one is to do an analysis with MTA which will be saved in the MTA log file. You can take this log files and copy from it you input into a text file.
+The first one is to do an analysis with MTA which will be saved in the MTA log file. You can take this log files and copy from it your inputs into a text file.
 
-The second way is to parse the inputs from the MTA script (f.ex. with grep), and to edit the corresponding relevant value in a separate text file.
+The second way is to parse the "print" inputs from the MTA script (f.ex. with grep: grep "print" MTA.py), and to edit the corresponding relevant value in a separate text file.
 
-When you have your text file ready, you pass it to MTA like this
+When your text file is ready, you pass it to MTA with a redirection pipe ("|") like this
 
 ```
-cat myinputs.txt | python3.8 MTA.py
+cat myinputs.txt | python3.8 MTA.py <-- Linux and MacOS
+type myinputs.txt | python3.8 MTA.py <-- Windows
 ```
 
 The main advantage to use an input text file is that you can easily keep track of your multiple analysis, you can comment them in the text file, and you can distribute your text file to collaborators who will be able to reproduce your analysis.
@@ -19,9 +20,9 @@ The main advantage to use an input text file is that you can easily keep track o
 If you want to couple MTA to Stata (16 and above), it is easily done thanks to the new functionality of Stata which support python. You can call MTA from a Stata Command window like this:
 
 ```
-python script /path/to/your/MTA.py <-- for Linux and MacOS
+python script /path/to/your/MTA.py <-- Linux and MacOS
 
-python script C:\path\to\you\MTA.py <-- for Windows users
+python script C:\path\to\you\MTA.py <-- Windows
 ```
 
 Stata provide the commands python search an python query to find your python installation and set the path to the python executable. Please, look at the Stata documentation or [this blog post](https://fintechprofessor.com/2019/06/30/quick-setup-of-python-with-stata-16/) in order to set your path the right way.
