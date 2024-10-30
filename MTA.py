@@ -403,7 +403,7 @@ computer. Please select:
 - l for liberation serif (a kind of times new roman)
 - m for courier new
 - t for times new roman:\n\n """)
-print("You entered: " + plt_user)
+print("You entered: " + plt_font)
 #
 #
 # Parameters for the size of the font in plots

@@ -4,9 +4,29 @@ You can automate the use of MTA easily in order to optimize your workflow. To do
 
 The first one is to do an analysis with MTA which will be saved in the MTA log file. You can take this log files and copy from it your inputs into a text file.
 
-The second way is to parse the "print" inputs from the MTA script (f.ex. with grep: grep "print" MTA.py), and to edit the corresponding relevant value in a separate text file.
+The second way is to parse the "print" inputs from the MTA script (f.ex. with grep: grep "print" MTA.py), and to edit the corresponding relevant value in a separate text file. You can edit your text file to have a finale input file like the following one:
 
-When your text file is ready, you pass it to MTA with a redirection pipe ("|") like this
+```
+/home/cpsozhome/Koenigsteinerschl/Textanalyse4/ZEIT/*
+y
+/home/cpsozhome/Stopwords/de.txt
+5
+n
+de
+a
+1
+n
+4
+n
+2
+3
+y
+4
+erklärung deutschland corona
+0
+```
+
+When your input text file is ready, you pass it to MTA with a redirection pipe ("|") like this
 
 ```
 cat myinputs.txt | python3.8 MTA.py <-- Linux and MacOS
@@ -14,6 +34,41 @@ type myinputs.txt | python3.8 MTA.py <-- Windows
 ```
 
 The main advantage to use an input text file is that you can easily keep track of your multiple analysis, you can comment them in the text file, and you can distribute your text file to collaborators who will be able to reproduce your analysis.
+
+If you want to comment your myinputs.txt file to inform colleagues of what you have done, you could do:
+
+```
+# Here is the way I would like to write a comment to my input file in Linux or MacOS
+#
+/home/cpsozhome/Koenigsteinerschl/Textanalyse4/ZEIT/*
+y
+/home/cpsozhome/Stopwords/de.txt
+5
+n
+de
+a
+1
+n
+4
+n
+2
+3
+y
+4
+erklärung deutschland corona
+0
+REM and here is the typical comment on windows
+REM with a second line
+```
+
+The problem with this is that you have to remove these comments when you pass the input file to MTA because otherwise, MTA will take the first line, which is a comment, and take it as if it where the first line it needs to process -- in this case the path to your files. MTA will stop, because it wont find any files at '# Here is the way...' which is not a path to your files.
+
+The solution to keep comments on your input file and pass it to MTA without the comments is the following one:
+
+```
+grep -v '#' myinputs.txt | python3.8 MTA.py <-- Linux and MacOS
+fstring -v 'REM' myinputs.txt | type myinputs.txt | python3.8 MTA.py <-- Windows
+```
 
 # Use MTA from inside Stata
 
