@@ -284,7 +284,7 @@ del corp_join
 gc.collect()
 #
 # Make the main corpus corpus_wo -- remove punctuation without removing blank spaces
-corpus_woa = [re.sub('\W+',' ', i) for i in corp_wo]
+corpus_woa = [re.sub(r'\W+',' ', i) for i in corp_wo]
 corpus_wo = [" ".join([word for word in sentences.split(" ") if len(word)>=int(word_length_c)]) for sentences in corpus_woa]
 # Need complete corpus as real list later
 corpus_re = list(re.sub("[^a-zA-Z'.,;:!?-]+",' ', i) for i in corp_gen)
@@ -936,7 +936,7 @@ while loop:
         topname = map(str, index_tn_a)
         topicnames = [append_str + sub for sub in topname]
 
-        topic_df_copy['Topics'] = pandas.Series(topicnames)
+        topic_df_copy['Topics'] = pandas.Series(topicnames, dtype="object")
         topic_words_nmf_df = topic_df_copy.pivot_table(index='Words',columns='Topics', values='Values', aggfunc=numpy.mean)
 
         file = open(nmf_df, "a")
@@ -1130,7 +1130,7 @@ while loop:
             topic_tuple_lda = list(zip(topic_n_lda, topic_w_lda))
             topic_df_lda = pandas.DataFrame(topic_tuple_lda, columns=['Words','Values'])
             topic_df_lda_copy = topic_df_lda.copy()
-            topic_df_lda_copy['Topics'] = pandas.Series(topicnames)
+            topic_df_lda_copy['Topics'] = pandas.Series(topicnames, dtype="object")
 
             topic_words_lda_df = topic_df_lda_copy.pivot_table(index='Words', columns='Topics', values='Values', aggfunc=numpy.mean)
 
