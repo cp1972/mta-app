@@ -57,8 +57,6 @@ y
 4
 erklärung deutschland corona
 0
-REM and here is the typical comment on windows
-REM with a second line
 ```
 
 The problem with this is that you have to remove these comments when you pass the input file to MTA because otherwise, MTA will take the first line, which is a comment, and take it as if it where the first line it needs to process -- in this case the path to your files. MTA will stop, because it wont find any files at '# Here is the way...' which is not a path to your files.
@@ -66,8 +64,45 @@ The problem with this is that you have to remove these comments when you pass th
 The solution to keep comments on your input file and pass it to MTA without the comments is the following one:
 
 ```
-grep -v '#' myinputs.txt | python3.8 MTA.py <-- Linux and MacOS
-fstring -v 'REM' myinputs.txt | type myinputs.txt | python3.8 MTA.py <-- Windows
+grep -v '#' myinputs.txt | python3.8 MTA.py <-- Linux and MacOS (and also windows)
+```
+
+Using windows, you can install grep from anaconda like this:
+
+```
+conda install conda-forge::m2-grep
+```
+
+and then, you can use grep like in Linux or MacOS.
+
+Use case with comments in front of inputs -- if you have an input file with comments in front of inputs, i.e. after an input like this f.ex.:
+
+```
+# Here is the way I would like to write a comment to my input file in Linux or MacOS
+#
+/home/cpsozhome/Koenigsteinerschl/Textanalyse4/ZEIT/*
+y
+/home/cpsozhome/Stopwords/de.txt
+5
+n
+de # Here is a comment in front of the language option
+a
+1
+n
+4
+n
+2
+3
+y
+4
+erklärung deutschland corona
+0
+```
+
+then, you can use grep like this to parse the input file:
+
+```
+grep -Po "^[^#]+(?=#?)" myinputs.txt | python3.8 MTA.py
 ```
 
 # Use MTA from inside Stata
