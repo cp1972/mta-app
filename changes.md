@@ -1,5 +1,14 @@
 # Major changes in versions of MTA
 
+## MTA version 2.0 -- January 2025 -- Major release
+
+  - Rework of the crossvalidation tests -- now the results of the tests are displayed directly to the user with the best number(s) of topics including Elbow, Silouhette, Calinski Harabasz and Davis Bouldin scores. We have also integrated the Cophenet correlation coefficients for NMF and LDA to these scores, enabling the user to see converging results through all the tests and the Cophenet values. This is an improvement in comparison to older versions of MTA, because now the user can continue the analysis without looking at the 'Cluster_Metrics' plot for these values and re-run MTA to apply its optimal number of topics.
+  - Accordingly, we have updated the 'Cluster_Metrics' plot with the graphical results of the Cophenet values for NMF and LDA.
+  - We have written two functions to catch the turning points in each crossvalidation tests and in the Cophenet values for NMF and LDA to output the best number(s) of topics to the user.
+  - BERT has not been very useful for users in our tests, and given the repetead difficulties at the installation of hdbscan, as well as the computing costs of BERT models, it has been decided to ditch it.
+
+In sum, this version of MTA comes with better crossvalidation tests, complete linkage to Cophenet values to advise users immediately about the best number(s) of topics they can use to compute an optimal topic model with NMF and/or LDA, without leaving the interface and reruning MTA. It is also lighter and easier to install than the previous 1.8 and 1.9 versions of MTA, particularly on Windows systems.
+
 ## MTA version 1.9 -- September 2024 -- Minor release
 
   - Lazy loading of modules for better RAM management and better code execution.
@@ -15,7 +24,7 @@
     - make a new directory: mkdir mynewdir
     - use the following onliner: for file in `cat BestFiles_ChoosenWords_dateofthefile.csv`; do cp "$file" /path/to/mynewdir ; done
 
-    This will copy the files listed in the document BestFiles_ChoosenWords_dateofthefile.csv to your mynewdir. Replace "BestFiles_ChoosenWords_dateofthefile" with the name of the appropriate file in your MTA-Results directory (you might have several of them).
+This will copy the files listed in the document BestFiles_ChoosenWords_dateofthefile.csv to your mynewdir. Replace "BestFiles_ChoosenWords_dateofthefile" with the name of the appropriate file in your MTA-Results directory (you might have several of them).
 
 ## MTA verion 1.8 -- September 2023 -- Minor release
 

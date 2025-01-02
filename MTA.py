@@ -82,7 +82,7 @@ print("""
 
         \t\tMTA -- Multi-Text Analyser
 
-Version: 1.9
+Version: 2.0
 
 Author: Christian Papilloud
 
@@ -146,9 +146,6 @@ cluster_words = os.path.join(save_home, 'Cluster_Similar_Words_')
 #
 sentnmf = os.path.join(save_home, 'Best_Sentences_NMF_')
 sentlda = os.path.join(save_home, 'Best_Sentences_LDA_')
-#
-bertplot = os.path.join(save_home, 'Bertopic_Topics_')
-bertbar = os.path.join(save_home, 'Bertopic_Words_Topics.html')
 #
 bestfileswords = os.path.join(save_home, 'BestFiles_ChoosenWords_')
 #
@@ -450,53 +447,60 @@ def findItem(theList, item):
 # optimal number of clusters for best model
 ## Kmeans++ for evaluation of best topics and metrics for validation
 ## Metrics: Silhouette, Davies Bouldin score, BIC and Log-Likelihood
-# Plot the results
-#
-# Make it a generator to reduce memory usage
-#
-def km_metrics_all(km_sse,km_sc,km_ch,km_db):
-    for i in range(2,num_c):
-        km = KMeans(n_clusters=i, random_state=0,init="k-means++").fit(X_scaled)
-        km_sse[i] = km.inertia_
-        km_sc[i] = silhouette_score(X_scaled, km.fit_predict(X_scaled))
-        km_ch[i] = calinski_harabasz_score(X_scaled, km.labels_)
-        km_db[i] = davies_bouldin_score(X_scaled,km.labels_)
-        progress_bar(i, num_c-1, prefix='Progress:', suffix='Complete', length=50)
-    # Delete unneeded objects
-    del km
-    # Do the plot
-    plt.clf()
-    font_plt(plt_font)
-    fig, axs = plt.subplots(2,2, sharex=True)
-    axs[0,0].scatter(x=list(km_sse.keys()),y=list(km_sse.values()),s=15,edgecolor='#b58900',alpha=0.5)
-    axs[0,0].set_title('Elbow')
-    axs[0,1].scatter(x=list(km_sc.keys()),y=list(km_sc.values()),s=15,edgecolor='#cb4b16',alpha=0.5)
-    axs[0,1].set_title('Silhouette')
-    axs[1,0].scatter(x=list(km_ch.keys()),y=list(km_ch.values()),s=15,edgecolor='#dc322f', alpha=0.5)
-    axs[1,0].set_title('Calinski Harabasz')
-    axs[1,1].scatter(x=list(km_db.keys()),y=list(km_db.values()),s=15,edgecolor='#d33682',alpha=0.5)
-    axs[1,1].set_title('Davies Bouldin')
-    fig.tight_layout()
-    font_plt(plt_font)
-    for ax in axs.flat:
-        ax.set(xlabel='Clusters', ylabel='Metrics')
-    for ax in axs.flat:
-        ax.label_outer()
-    plt.xticks(range(2, num_c))
-    plt.locator_params(nbins=10, axis='x')
-    if num_c > 20:
-        plt.locator_params(nbins=10, axis='x')
-    plt.yticks(fontsize=8)
-    plt.savefig(clusters_metrics + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
-    yield km_sse, km_sc, km_ch, km_db
-#
-# Function to model the topics with NMF
 #
 from scipy.cluster.hierarchy import cophenet, dendrogram, linkage
 from scipy.spatial.distance import cosine, pdist
 from sklearn import decomposition
 from sklearn.cluster import KMeans, AffinityPropagation
 from sklearn.metrics import silhouette_score,davies_bouldin_score,v_measure_score,calinski_harabasz_score
+from sklearn.decomposition import LatentDirichletAllocation
+
+# Function for metrics and cophenet correlation
+
+def km_metrics_all(km_sse,km_sc,km_ch,km_db,coph_corr,coph_corr_lda):
+   for i in range(2,num_c):
+      km = KMeans(n_clusters=i, random_state=0,init="k-means++").fit(X_scaled)
+      km_sse[i] = km.inertia_
+      km_sc[i] = silhouette_score(X_scaled, km.fit_predict(X_scaled))
+      km_ch[i] = calinski_harabasz_score(X_scaled, km.labels_)
+      km_db[i] = davies_bouldin_score(X_scaled,km.labels_)
+      progress_bar(i, num_c-1, prefix='Progress:', suffix='Complete', length=50)
+   # Delete unneeded objects
+   del km
+
+   for i in range(2,num_c):
+      nmf = decomposition.NMF(n_components=i, random_state=1)
+      doctopic = nmf.fit_transform(tf_matrix)
+      linkage_doc = linkage(doctopic, 'ward')
+      coph_corr.append(cophenet(linkage_doc, pdist(doctopic)))
+
+   for i in range(2,num_c):
+      lda_sktl = LatentDirichletAllocation(n_components=i, evaluate_every=-1, learning_method='online', n_jobs=-1, learning_offset=50., random_state=100, batch_size=128)
+      doctopic_lda = lda_sktl.fit_transform(lda_matrix)
+      linkage_doc_lda = linkage(doctopic_lda, 'ward')
+      coph_corr_lda.append(cophenet(linkage_doc_lda, pdist(doctopic_lda)))
+
+   return km_sse, km_sc, km_ch, km_db, coph_corr, coph_corr_lda
+
+# Function to get turning points in metrics -- linear variant because those arrays are small in general
+
+def turnp(lst):
+   lst_n = []
+   for i in range(1, len(lst)-1):
+      if lst[i-1] > lst[i] < lst[i+1] or lst[i-1] < lst[i] > lst[i+1]:
+         lst_n.append(i)
+   return lst_n
+
+# Function to return the results of turning points
+
+def check_lst(lst):
+   if lst == None or len(lst) == 0:
+      print("No optimal number of topics found")
+   else:
+      print("Optimal number of topics, from better to worst:", *lst, sep=" ")
+   return lst
+
+# Function to model the topics with NMF
 
 def nmf_tm(numb_top):
     num_top_words = len(df_median.columns)
@@ -733,132 +737,125 @@ while loop:
             km_silhouette = {}
             km_calinski = {}
             km_bouldin= {}
-            list(km_metrics_all(km_elbow,km_silhouette,km_calinski,km_bouldin))
-           # Delete unneeded lists
+            coph_corr= []
+            coph_corr_lda= []
+
+            list(km_metrics_all(km_elbow,km_silhouette,km_calinski,km_bouldin,coph_corr,coph_corr_lda))
+            print("\n")
+
+            # Save dict to list, perform turning points and output them to list
+
+            km_elbow_n = list(km_elbow.values())
+            km_silhouette_n = list(km_silhouette.values())
+            km_calinski_n = list(km_calinski.values())
+            km_bouldin_n = list(km_bouldin.values())
+
+            km_el = turnp(km_elbow_n)
+            km_el_n = [i+2 for i in km_el]
+            print("Elbow scores")
+            check_lst(km_el_n)
+            km_sil = turnp(km_silhouette_n)
+            km_sil_n = [i+2 for i in km_sil]
+            print("\nSilhouette scores")
+            check_lst(km_sil_n)
+            km_cal = turnp(km_calinski_n)
+            km_cal_n = [i+2 for i in km_cal]
+            print("\nCalinski Harabasz scores")
+            check_lst(km_cal_n)
+            km_bou = turnp(km_bouldin_n)
+            km_bou_n = [i+2 for i in km_bou]
+            print("\nDavies Bouldin scores")
+            check_lst(km_bou_n)
+
+            # Same for nmf and lda Cophenet correlations
+
+            coph_corr_l = [i[0] for i in coph_corr]
+            cophnmf_tp = turnp(coph_corr_l)
+            cophnmf_tp_n = [i+2 for i in cophnmf_tp]
+            print("\nNMF-Cophenet scores")
+            check_lst(cophnmf_tp_n)
+            val_cophnmf = []
+            for i in cophnmf_tp:
+               val_cophnmf.append(coph_corr_l[i])
+            print("NMF-Cophenet correlation values for scores: ", (*val_cophnmf), sep=" ")
+
+            coph_corr_lda_n = [i[0] for i in coph_corr_lda]
+            cophlda_tp = turnp(coph_corr_lda_n)
+            cophlda_tp_n = [i+2 for i in cophlda_tp]
+            print("\nLDA-Cophenet scores")
+            check_lst(cophlda_tp_n)
+            val_cophlda = []
+            for i in cophlda_tp:
+               val_cophlda.append(coph_corr_lda_n[i])
+            print("LDA-Cophenet correlation values for scores: ", (*val_cophlda), sep=" ")
+
+            coph_nmf = dict(zip(ks,coph_corr_l))
+            coph_lda = dict(zip(ks,coph_corr_lda_n))
+
+            print("\nWe save a plot 'Cluster_Metrics' with all performed test in your MTA folder")
+
+            # Do the plot for all metrics (kmeans++, nmf and lda Cophenet)
+            plt.clf()
+            font_plt(plt_font)
+            fig, axs = plt.subplots(2,3, sharex=True)
+            axs[0,0].scatter(x=list(km_elbow.keys()),y=list(km_elbow.values()),s=15,edgecolor='#b58900',alpha=0.5)
+            axs[0,0].set_title('Elbow')
+            axs[0,1].scatter(x=list(km_silhouette.keys()),y=list(km_silhouette.values()),s=15,edgecolor='#cb4b16',alpha=0.5)
+            axs[0,1].set_title('Silhouette')
+            axs[0,2].scatter(x=list(coph_nmf.keys()),y=list(coph_nmf.values()),s=15,edgecolor='#cb4b16',alpha=0.5)
+            axs[0,2].set_title('Cophenet NMF')
+            axs[1,0].scatter(x=list(km_calinski.keys()),y=list(km_calinski.values()),s=15,edgecolor='#dc322f', alpha=0.5)
+            axs[1,0].set_title('Calinski Harabasz')
+            axs[1,1].scatter(x=list(km_bouldin.keys()),y=list(km_bouldin.values()),s=15,edgecolor='#d33682',alpha=0.5)
+            axs[1,1].set_title('Davies Bouldin')
+            axs[1,2].scatter(x=list(coph_lda.keys()),y=list(coph_lda.values()),s=15,edgecolor='#cb4b16',alpha=0.5)
+            axs[1,2].set_title('Cophenet LDA')
+            fig.tight_layout()
+            font_plt(plt_font)
+            for ax in axs.flat:
+                 ax.set(xlabel='Clusters', ylabel='Metrics')
+            for ax in axs.flat:
+                 ax.label_outer()
+            plt.xticks(range(2, num_c))
+            plt.locator_params(nbins=10, axis='x')
+            if num_c > 20:
+                 plt.locator_params(nbins=10, axis='x')
+            plt.yticks(fontsize=8)
+            plt.savefig(clusters_metrics + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
+
+           # Delete unneeded lists/dicts
             del km_elbow
             del km_silhouette
             del km_calinski
             del km_bouldin
+            del km_elbow_n
+            del km_silhouette_n
+            del km_calinski_n
+            del km_bouldin_n
+            del km_el
+            del km_sil
+            del km_cal
+            del km_bou
+            del km_el_n
+            del km_sil_n
+            del km_cal_n
+            del km_bou_n
+            del coph_corr
+            del cophlda_tp
+            del cophlda_tp_n
+            del cophnmf_tp
+            del cophnmf_tp_n
+            del coph_corr_lda
+            del coph_corr_l
+            del coph_corr_lda_n
+            del coph_nmf
+            del coph_lda
+            del val_cophnmf
+            del val_cophlda
             gc.collect()
-            print("\n")
-            print("\nDoes it make sense to evaluate the best number of topics with BERT Large Language Model?")
-            if len(df_median.columns) > 30000:
-               print("\nYes it does. Loading BERTopic...\n")
-               from bertopic import BERTopic # new install bertopic[visualization]
-               from umap import UMAP
-               from hdbscan import HDBSCAN
-               from sentence_transformers import SentenceTransformer
-               os.environ["TOKENIZERS_PARALLELISM"] = "false" # prevent forked process in huggingface/tokenizers
-               # Bertopic
-               print("\nTrying BERTopic model on your dataset if enough vocabulary")
-               print("""\n
-            BERTopic shows topics based on semantic similarities in your documents. If your
-            documents are very similar in their contents, you will get few topics. If your
-            documents are very dissimilar in their contents, you get more/a lot of topics.
-            BERTopic works best with large amount of documents. Take the results as follows:
 
-            - few texts return few topics and tell you the absolute minimal number of topics
-              to expect from your corpus
-            - large amount of texts returns a lot of topics and tells you the maximal number
-              of topics to expect from your corpus
-
-            We save the following files for BERT results:
-
-            - semantic proximities between topics in 2D space
-            - contribution of five best words to first topics
-
-            You will find these files in your MTA-Results folder.
-                  """)
-               embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-               umap_model = UMAP(n_neighbors=15, n_components=5, min_dist=0.0, metric='cosine')
-               hdbscan_model = HDBSCAN(min_cluster_size=15, metric='euclidean', cluster_selection_method='eom', prediction_data=True)
-               vectorizer_model = lda_vectorize
-
-               bertmodel = BERTopic(embedding_model=embedding_model,umap_model=umap_model,hdbscan_model=hdbscan_model,vectorizer_model=vectorizer_model,language="multilanguage")
-
-               try:
-                  topics, probs = bertmodel.fit_transform(corpus_wo)
-                  hierarchical_topics = bertmodel.hierarchical_topics(corpus_wo)
-
-                  bertfreq = bertmodel.get_topic_info()
-                  print("\nNumber of Texts in each BERTopic\n")
-                  print(bertfreq)
-
-                  bert_list_topicswords = []
-                  for i in range(1,len(bertfreq.index)):
-                     bert_list = bertmodel.get_topic(bertfreq.iloc[i]["Topic"])
-                     bert_list_topicswords.append([item[0] for item in bert_list])
-
-                  bert_list_t = list(map(list, zip(*bert_list_topicswords)))
-                  bert_list_df = pandas.DataFrame(bert_list_t[1:],columns=bert_list_t[0])
-                  print("\nHierarchy of topics with BERT and semantically similar topics\n")
-                  bertree = bertmodel.get_topic_tree(hierarchical_topics)
-                  print(bertree)
-                  print("\nBest words for BERTopics\n")
-                  bertfreq_lst = bertfreq['Topic'].tolist()
-                  bertfreq_lst_adj = bertfreq_lst[1:]
-                  bert_list_df.columns = bertfreq_lst_adj
-                  print(bert_list_df)
-
-                  # Bert Topics Plot
-                  embeddings = bertmodel._extract_embeddings(corpus_wo)
-                  umap_model = UMAP(n_neighbors=15, n_components=2, min_dist=0.0, metric='cosine').fit(embeddings)
-                  df_umap = pandas.DataFrame(umap_model.embedding_, columns=["x", "y"])
-                  df_umap["topic"] = topics
-
-                  # Fontsize and colors for Bertplot
-                  fontsize = 12
-                  cmap = matplotlib.colors.ListedColormap(['#FF5722', # Red
-                                                        '#03A9F4', # Blue
-                                                        '#4CAF50', # Green
-                                                        '#80CBC4', # FFEB3B
-                                                        '#673AB7', # Purple
-                                                        '#795548', # Brown
-                                                        '#E91E63', # Pink
-                                                        '#212121', # Black
-                                                        '#00BCD4', # Light Blue
-                                                        '#CDDC39', # Yellow/Red
-                                                        '#AED581', # Light Green
-                                                        '#FFE082', # Light Orange
-                                                        '#BCAAA4', # Light Brown
-                                                        '#B39DDB', # Light Purple
-                                                        '#F48FB1', # Light Pink
-                                                        ])
-
-                  # Slice data
-                  to_plot = df_umap.copy()
-                  to_plot[df_umap.topic >= len(bertfreq.index)] = -1
-                  outliers = to_plot.loc[to_plot.topic == -1]
-                  non_outliers = to_plot.loc[to_plot.topic != -1]
-
-                  # Visualize outliers + inliers
-                  fig, ax = plt.subplots(figsize=(10, 12))
-                  scatter_outliers = ax.scatter(outliers['x'], outliers['y'], c="#E0E0E0", s=10, alpha=.3)
-                  scatter = ax.scatter(non_outliers['x'], non_outliers['y'], c=non_outliers['topic'], s=10, alpha=.3, cmap=cmap)
-
-                  # Add topic name to clusters
-                  centroids = to_plot.groupby("topic").mean().reset_index().iloc[1:]
-                  for row in centroids.iterrows():
-                     topic = int(row[1].topic)
-                     text = f"{topic}: " + "_".join([x[0] for x in bertmodel.get_topic(topic)[:3]])
-                     ax.text(row[1].x, row[1].y*1.01, text, fontsize=fontsize, horizontalalignment='center')
-
-                  # Save Bertplot
-                  ax.text(0.99, 0.01, f"BERTopic", transform=ax.transAxes, horizontalalignment="right", color="black")
-                  ax.set_frame_on(False)
-                  plt.xticks([], [])
-                  plt.yticks([], [])
-                  plt.savefig(bertplot + str(len(bertfreq.index)) + datetime.datetime.now().strftime("_%d_%m_%Y_%H_%M_%S") + '.pdf', bbox_inches='tight')
-
-                  # Save plots of words per topics
-                  fig = bertmodel.visualize_barchart()
-                  fig.write_html(bertbar)
-               except ValueError:
-                  print("\nNot enough vocabulary to perform Bertopic -- Skip")
-            elif len(df_median.columns) < 30000:
-               print("\nNo, it does not\n")
         elif bnt_f == "no" or bnt_f == "n":
-            print("\nNo automatic estimation -- we continue\n")
+           print("\nNo automatic estimation -- we continue\n")
 
         num_topics = int(input("\nNumber of topics you want to compute: "))
         print("You entered: " + str(num_topics))
