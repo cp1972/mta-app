@@ -2,12 +2,14 @@
 
 ## MTA version 2.0 -- January 2025 -- Major release
 
-  - Rework of the crossvalidation tests -- now the results of the tests are displayed directly to the user with the best number(s) of topics including Elbow, Silouhette, Calinski Harabasz and Davis Bouldin scores. We have also integrated the Cophenet correlation coefficients for NMF and LDA to these scores, enabling the user to see converging results through all the tests and the Cophenet values. This is an improvement in comparison to older versions of MTA, because now the user can continue the analysis without looking at the 'Cluster_Metrics' plot for these values and re-run MTA to apply its optimal number of topics.
-  - Accordingly, we have updated the 'Cluster_Metrics' plot with the graphical results of the Cophenet values for NMF and LDA.
+  - Rework of the crossvalidation tests -- the results of the tests are displayed directly to the user with the best number(s) of topics including Elbow, Silouhette, Calinski Harabasz and Davis Bouldin scores.
+  - We have added the Cophenet correlation coefficients for NMF and LDA to the crossvalidation scores, enabling the user to see converging results through all the tests and the Cophenet values.
+  - Ergonomic improvement: in comparison to older versions of MTA, the user can continue the analysis without looking at the 'Cluster_Metrics' plot and without the need to re-run MTA to apply its optimal number of topics.
+  - Accordingly, we have updated the 'Cluster_Metrics' plot, adding two plots translating the results of the Cophenet values for NMF and LDA.
   - We have written two functions to catch the turning points in each crossvalidation tests and in the Cophenet values for NMF and LDA to output the best number(s) of topics to the user.
-  - BERT has not been very useful for users in our tests, and given the repetead difficulties at the installation of hdbscan, as well as the computing costs of BERT models, it has been decided to ditch it.
+  - We have removed BERT Topic-Modelling method, which has not been useful for users in our tests; therefore, we avoid the difficulties related to the installation of hdbscan, as well as the computing costs of BERT models, which are high on low-end hardware.
 
-In sum, this version of MTA comes with better crossvalidation tests, complete linkage to Cophenet values to advise users immediately about the best number(s) of topics they can use to compute an optimal topic model with NMF and/or LDA, without leaving the interface and reruning MTA. It is also lighter and easier to install than the previous 1.8 and 1.9 versions of MTA, particularly on Windows systems.
+In sum, this version of MTA comes with better crossvalidation tests, complete linkage to Cophenet values to advise users immediately about the best number(s) of topics they can use to compute an optimal topic model with NMF and/or LDA, without leaving the interface of MTA. It is also lighter and easier to install than the previous 1.8 and 1.9 versions of MTA, particularly on Windows systems.
 
 ## MTA version 1.9 -- September 2024 -- Minor release
 
