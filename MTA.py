@@ -126,9 +126,9 @@ similar_topics_nmflda = os.path.join(save_home, 'Similar_Topics_NMF-LDA_')
 #
 #
 nmf_df = os.path.join(save_home, 'Weights_Words_NMF_Topics')
-mat_nmf_df = os.path.join(save_home, 'Weights_Words_NMF_Topics_Network')
+#mat_nmf_df = os.path.join(save_home, 'Weights_Words_NMF_Topics_Network')
 lda_df = os.path.join(save_home, 'Weights_Words_LDA_Topics')
-mat_lda_df = os.path.join(save_home, 'Weights_Words_LDA_Topics_Network')
+#mat_lda_df = os.path.join(save_home, 'Weights_Words_LDA_Topics_Network')
 nmf_topic_words = os.path.join(save_home, 'Top_Words_NMF_Topics')
 lda_topic_words = os.path.join(save_home, 'Top_Words_LDA_Topics')
 #
@@ -554,20 +554,19 @@ def top_wlda(tw_list_lda):
     file.close()
     return tw_list_lda,topic_words_lda_df_T
 
-# Function for the data to be shown as wordclouds
+# Function for the data to be shown as wordclouds and to print weights of words in topics
 #
-#def wordcl(top_lst_a,top_lst_b):
-#
-#    for i in topicwords:
-#        for j in i[:50]:
-#            top_lst_a.append(j)
-#
-#    topic_n = []
-#    for i in topic_words:
-#        for j in i[:50]:
-#            top_lst_b.append(j)
-#
-#    return top_lst_a,top_lst_b
+def wordcl(top_lst_a,top_lst_b):
+   for i in topicwords:
+      for j in i[:50]:
+         top_lst_a.append(j)
+
+   topic_n = []
+   for i in topic_words:
+      for j in i[:50]:
+         top_lst_b.append(j)
+
+   return top_lst_a,top_lst_b
 
 # Function to plot in the language of the user -- Weight of topics
 
@@ -916,7 +915,7 @@ while loop:
 
         topic_w = []
         topic_n = []
-        #wordcl(topic_w,topic_n)
+        wordcl(topic_w,topic_n)
         topic_tuple = list(zip(topic_n, topic_w))
 
         topic_df = pandas.DataFrame(topic_tuple, columns=['Words','Values'])
@@ -940,9 +939,9 @@ while loop:
         topic_df_copy.to_csv(nmf_df + '.csv', sep='\t', encoding='utf-8')
         file.close()
 
-        file = open(mat_nmf_df, "a")
-        topic_words_nmf_df.to_csv(mat_nmf_df + '.csv', sep=',', encoding='utf-8')
-        file.close()
+        #file = open(mat_nmf_df, "a")
+        #topic_words_nmf_df.to_csv(mat_nmf_df + '.csv', sep=',', encoding='utf-8')
+        #file.close()
 
         # Delete unneeded objects
         del topic_df_copy
@@ -1122,7 +1121,7 @@ while loop:
 
             topic_w_lda = []
             topic_n_lda = []
-            #wordcl(topic_w_lda,topic_n_lda)
+            wordcl(topic_w_lda,topic_n_lda)
 
             topic_tuple_lda = list(zip(topic_n_lda, topic_w_lda))
             topic_df_lda = pandas.DataFrame(topic_tuple_lda, columns=['Words','Values'])
@@ -1135,9 +1134,9 @@ while loop:
             topic_df_lda_copy.to_csv(lda_df + '.csv', sep='\t', encoding='utf-8')
             file.close()
 
-            file = open(mat_lda_df, "a")
-            topic_words_lda_df.to_csv(mat_lda_df + '.csv', sep=',', encoding='utf-8')
-            file.close()
+            #file = open(mat_lda_df, "a")
+            #topic_words_lda_df.to_csv(mat_lda_df + '.csv', sep=',', encoding='utf-8')
+            #file.close()
 
             # Delete unneeded objects
             del topic_df_lda_copy
