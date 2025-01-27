@@ -776,7 +776,7 @@ while loop:
             val_cophnmf = []
             for i in cophnmf_tp:
                val_cophnmf.append(coph_corr_l[i])
-            print("NMF-Cophenet correlation values for scores: ", (*val_cophnmf), sep=" ")
+            print("NMF-Cophenet correlation values for scores: ", (*val_cophnmf,), sep=" ")
 
             coph_corr_lda_n = [i[0] for i in coph_corr_lda]
             cophlda_tp = turnp(coph_corr_lda_n)
@@ -786,7 +786,7 @@ while loop:
             val_cophlda = []
             for i in cophlda_tp:
                val_cophlda.append(coph_corr_lda_n[i])
-            print("LDA-Cophenet correlation values for scores: ", (*val_cophlda), sep=" ")
+            print("LDA-Cophenet correlation values for scores: ", (*val_cophlda,), sep=" ")
 
             coph_nmf = dict(zip(ks,coph_corr_l))
             coph_lda = dict(zip(ks,coph_corr_lda_n))
