@@ -247,7 +247,7 @@ def remove_dots(lst_dots):
     """
     Function to remove extra dots
     """
-    pattern_e = '\.\.+'
+    pattern_e = r'\.\.+'
     lst_dots = [re.sub(pattern_e, ' ', i) for i in lst_dots]
     return lst_dots
 
@@ -255,7 +255,7 @@ def remove_url(lst_url):
     """
     Function to remove urls
     """
-    pattern_f = '''(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))'''
+    pattern_f = r'''(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'".,<>?«»“”‘’]))'''
     lst_url = [re.sub(pattern_f, '',i) for i in lst_url]
     return lst_url
 #
