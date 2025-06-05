@@ -18,6 +18,7 @@ import locale
 import math
 import pandas
 import numpy
+numpy.seterr(divide='ignore', invalid='ignore')
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.font_manager import FontProperties
@@ -495,9 +496,9 @@ def turnp(lst):
 
 def check_lst(lst):
    if lst == None or len(lst) == 0:
-      print("No optimal number of topics found")
+      print("No optimal topic")
    else:
-      print("Optimal number of topics, from better to worst:", *lst, sep=" ")
+      print("Optimal topics, better to worst:", *lst, sep=" ")
    return lst
 
 # Function to model the topics with NMF
@@ -751,19 +752,19 @@ while loop:
 
             km_el = turnp(km_elbow_n)
             km_el_n = [i+2 for i in km_el]
-            print("Elbow scores")
+            print("Elbow | ", end='')
             check_lst(km_el_n)
             km_sil = turnp(km_silhouette_n)
             km_sil_n = [i+2 for i in km_sil]
-            print("\nSilhouette scores")
+            print("\nSilhouette | ", end='')
             check_lst(km_sil_n)
             km_cal = turnp(km_calinski_n)
             km_cal_n = [i+2 for i in km_cal]
-            print("\nCalinski Harabasz scores")
+            print("\nCalinski Harabasz | ", end='')
             check_lst(km_cal_n)
             km_bou = turnp(km_bouldin_n)
             km_bou_n = [i+2 for i in km_bou]
-            print("\nDavies Bouldin scores")
+            print("\nDavies Bouldin | ", end='')
             check_lst(km_bou_n)
 
             # Same for nmf and lda Cophenet correlations
@@ -771,22 +772,22 @@ while loop:
             coph_corr_l = [i[0] for i in coph_corr]
             cophnmf_tp = turnp(coph_corr_l)
             cophnmf_tp_n = [i+2 for i in cophnmf_tp]
-            print("\nNMF-Cophenet scores")
+            print("\nNMF-Cophenet | ", end='')
             check_lst(cophnmf_tp_n)
             val_cophnmf = []
             for i in cophnmf_tp:
                val_cophnmf.append(coph_corr_l[i])
-            print("NMF-Cophenet correlation values for scores: ", (*val_cophnmf,), sep=" ")
+            print("Correlation values NMF-Cophenet: ", (*val_cophnmf,), sep=" ")
 
             coph_corr_lda_n = [i[0] for i in coph_corr_lda]
             cophlda_tp = turnp(coph_corr_lda_n)
             cophlda_tp_n = [i+2 for i in cophlda_tp]
-            print("\nLDA-Cophenet scores")
+            print("\nLDA-Cophenet | ", end='')
             check_lst(cophlda_tp_n)
             val_cophlda = []
             for i in cophlda_tp:
                val_cophlda.append(coph_corr_lda_n[i])
-            print("LDA-Cophenet correlation values for scores: ", (*val_cophlda,), sep=" ")
+            print("Correlation values LDA-Cophenet: ", (*val_cophlda,), sep=" ")
 
             coph_nmf = dict(zip(ks,coph_corr_l))
             coph_lda = dict(zip(ks,coph_corr_lda_n))
