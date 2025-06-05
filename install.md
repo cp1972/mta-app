@@ -87,10 +87,18 @@ python get-pip.py
 
 Then, you also have to install the python-tk package -- given your OS, you'll find this package in your app-manager (sudo apt-get install python3-tk for Python 3.x; Mac OS users use port). After that, you need to install the required python libraries for MTA:
 
-**With versions 1.7 or above**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
+**With versions 1.7, 1.8 and 1.9**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
 
 ```
 pip3 install numpy pandas matplotlib \
 numexpr scikit-learn scipy gensim seaborn \
 community python-louvain bertopic
+```
+
+**With versions after 1.9**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
+
+```
+pip3 install numpy pandas matplotlib \
+numexpr scikit-learn scipy gensim seaborn \
+community python-louvain
 ```
