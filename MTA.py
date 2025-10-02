@@ -1296,7 +1296,7 @@ while loop:
         # Calculate rolling mean
 
         for col in df_topics_s.columns:
-            df_topics_s['RM_'+ str(col)] = df_topics_s[str(col)].rolling(window=window_size_nmf,center=False).mean()
+            df_topics_s['RM_'+ str(col)] = df_topics_s[str(col)].rolling(window=window_size_nmf,min_periods=1,center=False).mean()
 
         # Plot rolling mean for all topics in all texts
 
@@ -1318,7 +1318,7 @@ while loop:
                 since you have more than 50 documents. The plot
                 would be unreadable.
                 """)
-        if len(df_topics_rm.index) <= 40:
+        elif len(df_topics_rm.index) <= 40:
             df_topics_rm.plot(kind='bar', stacked=True, colormap='Paired')
             lang_distr(plt_user)
             plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),prop={'size':10})
@@ -1379,7 +1379,7 @@ while loop:
             # Calculate rolling mean
 
             for col_lda in df_topics_s_lda.columns:
-                df_topics_s_lda['RM_'+ str(col_lda)] = df_topics_s_lda[str(col_lda)].rolling(window=window_size_lda,center=False).mean()
+                df_topics_s_lda['RM_'+ str(col_lda)] = df_topics_s_lda[str(col_lda)].rolling(window=window_size_lda,min_periods=1,center=False).mean()
 
             # Rolling mean of all Topics in all texts
 
@@ -1401,7 +1401,7 @@ while loop:
                 The plot would be unreadable.
                 """)
 
-            if len(df_topics_rm_lda.index) <= 40:
+            elif len(df_topics_rm_lda.index) <= 40:
                 df_topics_rm_lda.plot(kind='bar', stacked=True, colormap='Paired')
                 lang_distr(plt_user)
                 plt.legend(loc='center left', bbox_to_anchor=(1, 0.5),prop={'size':10})
