@@ -39,7 +39,49 @@ python3.8 MTA.py.
 
 MTA will crash if your path is not writable for the user -- make sure you have sufficient permission on your path before processing. In doubt, ask your admin.
 
-**For older versions of MTA (1.8 and 1.9) only**:
+## Unixes and BSD -- The command line way
+
+Python has been installed in these operating systems natively, so you first have to install pip -- the Python package manager -- with your OS package manager, along with two dependencies: setuptools and wheel, for example, in Linux for Python 3.x:
+
+```
+sudo apt-get install python3-pip && pip3 install wheel setuptools
+```
+
+If you don't have pip, setuptools and wheel, you can install them via the get-pip.py, which can be grabbed from [the following page](https://pip.pypa.io/en/stable/installing/). Download this script, open a terminal or command line tool, and type:
+
+```
+python get-pip.py
+```
+
+Then, you also have to install the python-tk package -- given your OS, you'll find this package in your app-manager (sudo apt-get install python3-tk for Python 3.x; Mac OS users use port). After that, you need to install the required python libraries for MTA.
+
+Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
+
+```
+pip3 install numpy pandas matplotlib \
+numexpr scikit-learn scipy gensim seaborn \
+community python-louvain
+```
+
+Alternative: you can install MTA per requirements file like this:
+
+```
+pip3 install -r requirements.txt
+```
+
+## Deprecated versions of MTA
+
+**For versions of MTA before 1.7 only**
+
+  * you miss two packages that you have to download [at Christoph Gohlke web page](https://www.lfd.uci.edu/~gohlke/pythonlibs/): these are 'pycairo' and 'wordcloud' -- choose the packages at the top of each list and download the suitable package for your system (either the 32-bit or the 64-bit package). For instance, look at the name of the file; f.ex. pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl means a package pycairo, version 1.18.0 for python 2.7 (cp27) and for the Windows 64 bits operating system; if you have Anaconda installed with python3.4 f.ex., then you must use a package with cp34 in the filename;
+  * once downloaded, copy/paste these packages there where your Terminal has been opened -- if your Terminal shows a prompt with: '<base>C:\Users\Downloads', then make sure that your two packages are under 'C:\Users\Downloads'
+  * Finally, install these packages with pip in the Terminal, for example, here for a 64-bit windows OS:
+
+```
+pip install pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl wrapt‑1.11.2‑cp27‑cp27m‑win_amd64.whl
+```
+
+**For versions of MTA from 1.7 to 1.9**:
 
 These versions has the bertopic feature; the installation might throw errors with hdbscan. One solution is, first, to update pip
 
@@ -61,44 +103,10 @@ Then, install bertopic with pip:
 pip install bertopic
 ```
 
-**For older versions of MTA before 1.7 only**
-
-  * you miss two packages that you have to download [at Christoph Gohlke web page](https://www.lfd.uci.edu/~gohlke/pythonlibs/): these are 'pycairo' and 'wordcloud' -- choose the packages at the top of each list and download the suitable package for your system (either the 32-bit or the 64-bit package). For instance, look at the name of the file; f.ex. pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl means a package pycairo, version 1.18.0 for python 2.7 (cp27) and for the Windows 64 bits operating system; if you have Anaconda installed with python3.4 f.ex., then you must use a package with cp34 in the filename;
-  * once downloaded, copy/paste these packages there where your Terminal has been opened -- if your Terminal shows a prompt with: '<base>C:\Users\Downloads', then make sure that your two packages are under 'C:\Users\Downloads'
-  * Finally, install these packages with pip in the Terminal, for example, here for a 64-bit windows OS:
-
-```
-pip install pycairo‑1.18.0‑cp27‑cp27m‑win_amd64.whl wrapt‑1.11.2‑cp27‑cp27m‑win_amd64.whl
-```
-
-## Unixes and BSD -- The command line way
-
-Python has been installed in these operating systems natively, so you first have to install pip -- the Python package manager -- with your OS package manager, along with two dependencies: setuptools and wheel, for example, in Linux for Python 3.x:
-
-```
-sudo apt-get install python3-pip && pip3 install wheel setuptools
-```
-
-If you don't have pip, setuptools and wheel, you can install them via the get-pip.py, which can be grabbed from [the following page](https://pip.pypa.io/en/stable/installing/). Download this script, open a terminal or command line tool, and type:
-
-```
-python get-pip.py
-```
-
-Then, you also have to install the python-tk package -- given your OS, you'll find this package in your app-manager (sudo apt-get install python3-tk for Python 3.x; Mac OS users use port). After that, you need to install the required python libraries for MTA:
-
-**With versions 1.7, 1.8 and 1.9**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
+Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
 
 ```
 pip3 install numpy pandas matplotlib \
 numexpr scikit-learn scipy gensim seaborn \
 community python-louvain bertopic
-```
-
-**With versions after 1.9**: Open a terminal or a command line tool of your choice, and copy the following line for Python 3.x users:
-
-```
-pip3 install numpy pandas matplotlib \
-numexpr scikit-learn scipy gensim seaborn \
-community python-louvain
 ```

@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+numexpr
+scikit-learn
+scipy
+gensim
+seaborn
+community
+python-louvain
