@@ -1663,7 +1663,7 @@ while loop:
 
         embedding_clusters = numpy.array(embedding_clusters)
         n, m, k = embedding_clusters.shape
-        tsne_model_sw = TSNE(perplexity=16, n_components=2, init='pca', n_iter=3500, random_state=32)
+        tsne_model_sw = TSNE(perplexity=16, n_components=2, init='pca', max_iter=3500, random_state=32)
         embeddings_sw = numpy.array(tsne_model_sw.fit_transform(embedding_clusters.reshape(n * m, k))).reshape(n, m, 2)
 
         def tsne_plot_similar_words(labels, embedding_clusters, word_clusters, a, filename=None):
