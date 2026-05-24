@@ -1,5 +1,23 @@
 # Major changes in versions of MTA
 
+## MTA version 3.0 -- May 2026 -- Major release
+
+Version 3.0 is a full reorganization of MTA. The single `MTA.py` terminal script has been split into a reusable engine and two front-ends. Older `MTA.py` versions (≤ 2.0) remain available in the `archive/` directory of this repository for users who still rely on them.
+
+### What's new
+
+  - **Three ways to run MTA, one engine.** All analyses now go through `mta_core.py`, a pure-Python library with no I/O side effects. On top of it sit (a) a Streamlit web app for click-and-drag use, (b) a modernized CLI (`MTA_v3.py`) with both an interactive menu and a non-interactive batch mode for Stata/R/shell pipelines, and (c) double-clickable launchers for Windows, macOS and Linux. The original `MTA.py` is no longer the entry point.
+  - **No more Anaconda dependency.** The new installers download an isolated Python 3.12 via `uv` directly into the MTA folder. Nothing is touched outside that folder; uninstalling means dragging the folder to the trash. This replaces the Anaconda-based installation path that was needed on Windows and macOS.
+  - **Streamlit web app.** A six-page workflow runs locally in the browser: Load corpus → Topic models → Word weights → Topic evolution → Semantic context → Group comparison. Data never leaves the user's machine. Pages are locked until their prerequisites are met to guide first-time users.
+  - **Group comparison (new analysis).** Compares topic-weight distributions across groups (e.g. F vs M, age bands, sources) using Welch's t-test with Benjamini-Hochberg correction. Box-plots are generated automatically for topics that survive correction. Groups can be defined either from filename patterns or from a separate CSV.
+  - **Topic evolution as a first-class step.** What used to be a side feature ("year stamp at the beginning of files") is now a dedicated page/action with rolling means and optional yearly aggregation.
+  - **Co-occurrence embeddings as default.** The semantic-context analysis now defaults to a co-occurrence + PCA method that needs no external dependency. Word2Vec via gensim remains available as an option but `gensim` itself is now optional, which lightens installation significantly.
+  - **Multilingual chart output.** A single language toggle (English/French/German) propagates to every axis label, legend and title across both interfaces.
+  - **Exports.** Every table is exported as both CSV and JSON (split orientation, easy to read from Stata/R); every figure as both PDF and PNG.
+  - **Batch / scripting mode rebuilt around arguments.** `MTA_v3.py --corpus … --stopwords … --action {nmf,lda,evolution,word-weights,semantic,compare-groups,all}` replaces the input-piping technique documented in the old `automate.md`. Existing Stata workflows that piped a text file into `MTA.py` should be ported; the old method still works against the archived `MTA.py`.
+
+In short, version 3.0 keeps the analytical core of MTA 2.0 (NMF, LDA, cross-validation with Cophenet, Word2Vec-style similarities) and rebuilds everything around it: installation, user interface, scripting interface, and outputs.
+
 ## MTA version 2.0 -- January 2025 -- Major release
 
   - Rework of the crossvalidation tests -- the results of the tests are displayed directly to the user with the best number(s) of topics including Elbow, Silouhette, Calinski Harabasz and Davis Bouldin scores.

@@ -1,0 +1,12 @@
+streamlit>=1.36
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+scipy>=1.10
+matplotlib>=3.7
+seaborn>=0.12
+
+# Optional: only needed if you want to use the Word2Vec embedding method
+# on page 5 (Semantic context). The default Co-Occurrence + PCA method
+# does NOT require gensim.
+# gensim>=4.3

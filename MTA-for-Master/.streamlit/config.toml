@@ -1,0 +1,17 @@
+# Streamlit configuration for MTA
+#
+# This file is read automatically by Streamlit when the app starts.
+# It mainly raises the upload size limit so that large corpora
+# (e.g. 15,000 documents) can be processed without hitting
+# Streamlit's default 200 MB cap.
+
+[server]
+# Maximum upload size in megabytes (default: 200). Set to 5 GB.
+# This is a per-file limit AND a total-batch limit; the cap is
+# generous enough that the bottleneck becomes RAM/CPU, not Streamlit.
+maxUploadSize = 5000
+
+# Disable usage stats collection (already passed via CLI, but kept
+# here for safety).
+[browser]
+gatherUsageStats = false
