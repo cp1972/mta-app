@@ -17,9 +17,9 @@ that older work remains reproducible.
 
 | Folder              | What it contains                                      | For whom                                 |
 | ------------------- | ----------------------------------------------------- | ---------------------------------------- |
-| `MTA-for-Master/`   | **Version 3.0** — Streamlit web app + modern CLI      | Everyone, current users                  |
+| `MTA-for-Master/`   | **Versions 3.0–3.1** — Streamlit web app + modern CLI | Everyone, current users                  |
 | `archive/`          | **Versions ≤ 2.0** — original single-script `MTA.py`  | Users with legacy workflows or do-files  |
-| `changes.md`        | Full version history (3.0 down to 0.1, January 2017)  | Anyone tracking what changed             |
+| `changes.md`        | Full version history (3.1 down to 0.1, January 2017)  | Anyone tracking what changed             |
 | `LICENSE`           | License                                               | —                                        |
 
 If you arrived here for the first time, **use `MTA-for-Master/`**. The
@@ -42,6 +42,10 @@ can still find it, its documentation, and reproduce earlier analyses.
   - **Group comparison** (3.0+): Welch's t-test with Benjamini-Hochberg
     correction, plus automatic box-plots for topics where groups differ
     significantly.
+  - **Network views** (3.1+): publication-ready bipartite graphs of the
+    topic model — Topic ↔ Document, Topic ↔ top-words, or combined —
+    rendered with ForceAtlas2 (the same algorithm Gephi uses) and a
+    Solarized color palette.
   - **Visualisation** with high-quality plots (PDF + PNG, multilingual:
     English / French / German) and **results saved as tables** (CSV +
     JSON) for further use in Stata, R, Gephi, or any spreadsheet.

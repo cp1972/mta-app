@@ -95,6 +95,32 @@ To run your first analysis after starting MTA:
 5. You should see three distinct themes corresponding to the three
    subjects of the demonstration texts (sociology, economics,
    computational methods)
+6. Visit the **🕸 Network views** page to see the same model as a
+   bipartite graph: topics in color, documents and top-words around them
+
+## The Network views page
+
+After running NMF or LDA, the **🕸 Network views** page renders the
+topic model as three publication-ready bipartite graphs:
+
+- **Topic ↔ Document** — each document linked to the topic(s) it
+  weighs strongly on; helps you see which documents migrate between
+  topics
+- **Topic ↔ Top-N words** — each topic linked to its most
+  representative words; helps you read the *content* of each topic
+- **Combined** — topics, documents (circles) and words (squares) on
+  one canvas, for an overview of the model
+
+The graphs use the same ForceAtlas2 layout as Gephi, with the
+Solarized color palette. Node sizes encode the cumulated weight of
+each topic; edge thicknesses encode the strength of each link. Use
+the **Emphasize size differences** toggle when working on a balanced
+corpus where masses are similar — it stretches the smallest and
+largest topics apart so even modest differences become visible.
+
+Each graph can be downloaded as PNG (for slides and Word documents)
+or PDF (vector, for publication). The CLI batch mode produces the
+same three figures via `--action network`.
 
 ## Working with your own data
 

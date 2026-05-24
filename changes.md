@@ -1,5 +1,26 @@
 # Major changes in versions of MTA
 
+## MTA version 3.1 -- May 2026 -- Minor release
+
+Network views — bipartite graph visualizations of the topic model — are added to all three interfaces (Streamlit, interactive CLI menu, batch mode).
+
+### What's new
+
+  - **Three publication-ready bipartite network graphs.** After running NMF or LDA, MTA can now render the topic model as: (a) `Topic ↔ Document` — each document connected to the topic(s) it weighs strongly on; (b) `Topic ↔ Top-N words` — each topic connected to its most representative words; (c) `Combined` — topics, documents (as circles) and words (as squares) on the same canvas. Topic node sizes encode the cumulated weight attached to each topic; edge thicknesses encode the strength of each link.
+  - **ForceAtlas2 layout.** Same algorithm as Gephi, via `fa2-modified`. Produces organic node placements where strongly connected nodes cluster together. Falls back to NetworkX spring layout if the package is unavailable.
+  - **Solarized color palette** (Ethan Schoonover) for warm, publication-grade colors that work on white backgrounds. Curved edges (arc3, rad=0.15) replace straight lines, making overlapping edges easier to follow.
+  - **`emphasize_differences` toggle.** Two size-encoding modes for topic nodes: faithful (sqrt scaling — on a balanced corpus, nodes look similar; that's the data) or stretched (min-max — the smallest and largest topics are pulled apart so even modest differences become visible). The toggle is exposed in the Streamlit page, the interactive menu (question on prompt) and the CLI flag `--emphasize-differences`.
+  - **Streamlit page 7 — "Network views"** with three tabs (one per graph kind), interactive sliders for the minimum edge weight and top-N parameters, and per-graph PNG + PDF download buttons.
+  - **Interactive CLI menu entry 6** — same three graphs from the terminal, asking the user for the method (NMF/LDA), kind of graph, top-N, threshold and emphasis flag.
+  - **Batch action `network`** for `MTA_v3.py`. New options: `--network-method {nmf,lda}`, `--network-kind {doc,word,combined,all}`, `--network-top-n N`, `--network-min-edge X`, `--emphasize-differences`. The action is also included when `--action all` is used.
+  - **Semantic cloud — configurable label density.** The 2D semantic cloud previously labelled the 15 closest words to each seed (hard-coded), which left some users wondering why most points stayed unlabeled on dense clouds. The cap is now exposed via a new CLI flag `--max-labels-per-cluster N` (default 15), a prompt in the interactive menu, and a slider on the Streamlit page (Section 2 → "Publication-ready export"). A small subtitle is also printed on the figure ("Labels shown for the top-N closest words to each seed…") so the choice is documented in the output itself.
+
+### Internal changes
+
+  - `plot_semantic_cloud` was moved from `MTA_v3.py` to `mta_core.py` so that both the CLI and the Streamlit page can call it for publication-ready static exports. A thin wrapper under the old private name `_plot_semantic_cloud` is kept in `MTA_v3.py` so existing call sites keep working.
+
+The visualization engine lives in a new module `mta_network.py`. New dependencies: `networkx>=3.0`, `fa2-modified>=0.4`. Both are added to `requirements.txt`. No existing functionality has been changed.
+
 ## MTA version 3.0 -- May 2026 -- Major release
 
 Version 3.0 is a full reorganization of MTA. The single `MTA.py` terminal script has been split into a reusable engine and two front-ends. Older `MTA.py` versions (≤ 2.0) remain available in the `archive/` directory of this repository for users who still rely on them.
@@ -14,7 +35,7 @@ Version 3.0 is a full reorganization of MTA. The single `MTA.py` terminal script
   - **Co-occurrence embeddings as default.** The semantic-context analysis now defaults to a co-occurrence + PCA method that needs no external dependency. Word2Vec via gensim remains available as an option but `gensim` itself is now optional, which lightens installation significantly.
   - **Multilingual chart output.** A single language toggle (English/French/German) propagates to every axis label, legend and title across both interfaces.
   - **Exports.** Every table is exported as both CSV and JSON (split orientation, easy to read from Stata/R); every figure as both PDF and PNG.
-  - **Batch / scripting mode rebuilt around arguments.** `MTA_v3.py --corpus … --stopwords … --action {nmf,lda,evolution,word-weights,semantic,compare-groups,all}` replaces the input-piping technique documented in the old `automate.md`. Existing Stata workflows that piped a text file into `MTA.py` should be ported; the old method still works against the archived `MTA.py`.
+  - **Batch / scripting mode rebuilt around arguments.** `MTA_v3.py --corpus … --stopwords … --action {nmf,lda,evolution,word-weights,semantic,compare-groups,network,all}` replaces the input-piping technique documented in the old `automate.md`. Existing Stata workflows that piped a text file into `MTA.py` should be ported; the old method still works against the archived `MTA.py`.
 
 In short, version 3.0 keeps the analytical core of MTA 2.0 (NMF, LDA, cross-validation with Cophenet, Word2Vec-style similarities) and rebuilds everything around it: installation, user interface, scripting interface, and outputs.
 

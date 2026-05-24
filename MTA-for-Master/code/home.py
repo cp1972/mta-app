@@ -38,6 +38,7 @@ st.markdown(
     | 4 | **📈 Topic evolution** | Rolling mean of topic weights across documents; optional yearly aggregation. |
     | 5 | **🧠 Semantic context** | Find similar words, visualise semantic clouds in 2D, select sub-corpora by keyword. |
     | 6 | **⚖️ Group comparison** | Test whether documents differ significantly between groups (e.g. F vs M, age bands…). |
+    | 7 | **🕸 Network views** | Bipartite network graphs of topics, documents and top-words (publication-ready). |
 
     ### Tips
 
@@ -105,7 +106,7 @@ with c3:
 st.divider()
 
 st.caption(
-    "MTA — Multi-Text Analyser • C. Papilloud (2017-2025) • "
+    "MTA — Multi-Text Analyser • C. Papilloud (2017-2026) • "
     "Streamlit interface for the Master in Sociology course, "
     "Martin Luther University Halle-Wittenberg."
 )

@@ -25,6 +25,7 @@ from shared import (
     page_header,
     require_matrices,
     download_csv,
+    download_figure,
     get_chart_language,
 )
 
@@ -384,9 +385,41 @@ else:
 
     st.altair_chart(cloud_chart, use_container_width=True)
     st.caption(
-        "💡 Drag to pan, scroll to zoom. To download as PNG: click the "
-        "**⋯** menu at the top-right of the chart, then **Save as PNG**."
+        "💡 Drag to pan, scroll to zoom. The interactive chart above shows "
+        "**all** word labels; for a static, publication-ready version "
+        "with controlled label density, use the export below."
     )
+
+    with st.expander("📐 Publication-ready export (PDF/PNG)"):
+        st.markdown(
+            "The chart above is interactive (Altair), but the labels "
+            "may overlap if you keep them all visible. For a paper or "
+            "presentation, generate a static figure where only the "
+            "**N closest words to each seed** are labelled. The other "
+            "points are still drawn (so the shape of each cluster "
+            "remains visible) but stay unlabeled to keep the figure "
+            "readable. The full word list is in the CSV below."
+        )
+        max_labels = st.slider(
+            "Maximum labels per seed in the static figure",
+            min_value=5, max_value=50, value=15, step=1,
+            key="semantic_cloud_max_labels",
+            help=(
+                "Number of nearest neighbours that receive a text label "
+                "around each seed. Set to a higher value on sparse "
+                "corpora where the cloud is not too dense."
+            ),
+        )
+        if st.button("🖼️ Build static figure for download",
+                     key="build_semantic_static"):
+            with st.spinner("Rendering with matplotlib…"):
+                fig = mta.plot_semantic_cloud(
+                    df_cloud,
+                    max_annotations_per_cluster=max_labels,
+                )
+            if fig is not None:
+                st.pyplot(fig, use_container_width=False)
+                download_figure(fig, name="semantic_cloud")
 
     with st.expander("Raw coordinates (downloadable)"):
         st.dataframe(df_cloud.round(3), use_container_width=True,

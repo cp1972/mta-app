@@ -63,6 +63,11 @@ groups_page = st.Page(
     title="Group comparison",
     icon="⚖️",
 )
+network_page = st.Page(
+    "pages/7_Network_views.py",
+    title="Network views",
+    icon="🕸",
+)
 
 # Build the menu. The `position="sidebar"` puts it on the left, as before.
 # The dict keys ("MTA Menu") replace the auto-generated section label.
@@ -70,7 +75,7 @@ pg = st.navigation(
     {
         "MTA Menu": [home_page, load_page, models_page,
                      weights_page, evolution_page, context_page,
-                     groups_page],
+                     groups_page, network_page],
     },
     position="sidebar",
 )

@@ -1086,6 +1086,100 @@ def pca_project_word_clusters(
     return out
 
 
+def plot_semantic_cloud(
+    df_cloud: pd.DataFrame,
+    annotate_neighbours: bool = True,
+    max_annotations_per_cluster: int = 15,
+):
+    """
+    Render a 2D scatter plot of the semantic cloud (output of
+    pca_project_word_clusters). Seeds are shown as large black diamonds
+    with bold labels; neighbours are coloured dots, optionally annotated
+    with small text labels.
+
+    Parameters
+    ----------
+    df_cloud : DataFrame
+        Output of `pca_project_word_clusters`, with columns
+        Word / Cluster / IsSeed / x / y.
+    annotate_neighbours : bool
+        If True, draw small text labels next to the closest neighbours
+        of each seed. If False, only seed labels are drawn.
+    max_annotations_per_cluster : int
+        Maximum number of neighbour labels per cluster. Labels go to
+        the closest neighbours to the seed in PCA space; other points
+        are still drawn but unlabeled. The full word list is always
+        in df_cloud and can be exported via CSV/JSON.
+
+    Returns
+    -------
+    matplotlib.figure.Figure or None
+    """
+    if df_cloud.empty:
+        return None
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+
+    # Categorical palette
+    from matplotlib import colormaps
+    palette = colormaps["tab10"]
+    clusters = list(df_cloud["Cluster"].unique())
+    colour_map = {c: palette(i % 10) for i, c in enumerate(clusters)}
+
+    for cluster in clusters:
+        sub = df_cloud[df_cloud["Cluster"] == cluster]
+        colour = colour_map[cluster]
+        neighbours = sub[~sub["IsSeed"]]
+        ax.scatter(neighbours["x"], neighbours["y"], label=cluster,
+                   color=colour, alpha=0.55, s=40)
+        # Annotate the N closest neighbours (Euclidean in PCA plane =
+        # visual proximity), provided the user wants labels at all.
+        if annotate_neighbours and len(neighbours) > 0:
+            seed_row = sub[sub["IsSeed"]]
+            if not seed_row.empty:
+                sx, sy = seed_row.iloc[0]["x"], seed_row.iloc[0]["y"]
+                dists = ((neighbours["x"] - sx) ** 2
+                         + (neighbours["y"] - sy) ** 2)
+                closest = neighbours.iloc[
+                    dists.argsort()[:max_annotations_per_cluster]
+                ]
+                for _, row in closest.iterrows():
+                    ax.annotate(row["Word"], (row["x"], row["y"]),
+                                fontsize=7, alpha=0.75, color=colour,
+                                xytext=(4, 2), textcoords="offset points")
+        # Seed: big black diamond with bold label
+        for _, row in sub[sub["IsSeed"]].iterrows():
+            ax.scatter(row["x"], row["y"], marker="D", s=160,
+                       color="black", zorder=5,
+                       edgecolor="white", linewidths=1.5)
+            ax.annotate(row["Word"], (row["x"], row["y"]),
+                        fontsize=13, fontweight="bold",
+                        xytext=(10, 2), textcoords="offset points",
+                        zorder=6)
+
+    ax.legend(loc="best", fontsize=9, title="Seed word")
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_xlabel("PCA axis 1", fontsize=9, alpha=0.6)
+    ax.set_ylabel("PCA axis 2", fontsize=9, alpha=0.6)
+    # Subtitle explaining the label-cap so readers understand why some
+    # points are unlabeled.
+    if annotate_neighbours:
+        fig.text(
+            0.5, 0.01,
+            f"Labels shown for the top-{max_annotations_per_cluster} "
+            f"closest words to each seed (other points stay unlabeled "
+            f"to keep the plot readable). "
+            f"Full word list in the accompanying CSV/JSON.",
+            ha="center", va="bottom",
+            fontsize=8, color="#555", style="italic",
+        )
+        fig.tight_layout(rect=(0, 0.04, 1, 1))
+    else:
+        fig.tight_layout()
+    return fig
+
+
 def best_documents_for_words(
     tfidf_matrix,
     feature_names: np.ndarray,

@@ -54,6 +54,7 @@ matplotlib.use("Agg")  # non-interactive backend, safe for headless batch
 import matplotlib.pyplot as plt
 
 import mta_core as mta
+import mta_network as mtanet
 
 
 # =============================================================================
@@ -201,7 +202,7 @@ def run_batch(args: argparse.Namespace) -> int:
 
     # Dispatch to the requested action
     actions = (["nmf", "lda", "evolution", "word-weights", "semantic",
-                "compare-groups"]
+                "compare-groups", "network"]
                if args.action == "all" else [args.action])
 
     for action in actions:
@@ -224,6 +225,9 @@ def run_batch(args: argparse.Namespace) -> int:
         elif action == "compare-groups":
             _action_compare_groups(args, matrices, labels,
                                    output_dir, csv_json_formats, plot_formats)
+        elif action == "network":
+            _action_network(args, matrices, labels,
+                            output_dir, plot_formats)
         else:
             print(f"  ✗ Unknown action: {action}", file=sys.stderr)
             return 2
@@ -546,70 +550,14 @@ def _action_word_weights(args, matrices, labels,
     print(f"  ✓ Word weights complete")
 
 
-def _plot_semantic_cloud(
-    df_cloud: pd.DataFrame,
-    annotate_neighbours: bool = True,
-    max_annotations_per_cluster: int = 15,
-) -> Optional[plt.Figure]:
+def _plot_semantic_cloud(*args, **kwargs):
     """
-    Render a 2D scatter plot of the semantic cloud (output of
-    pca_project_word_clusters). Seeds are shown as large black diamonds
-    with bold labels; neighbours are coloured dots, optionally annotated
-    with small text labels.
-
-    When a cluster has many neighbours, only the closest
-    `max_annotations_per_cluster` to the seed get a text label, to keep
-    the plot readable on big embeddings (e.g. 50 neighbours × 3 seeds).
+    Thin wrapper around mta.plot_semantic_cloud — kept under its original
+    private name so existing batch-mode and interactive-menu call sites
+    don't need to change. The implementation now lives in mta_core so
+    that the Streamlit page can call it too.
     """
-    if df_cloud.empty:
-        return None
-    fig, ax = plt.subplots(figsize=(9, 7))
-
-    # Use a categorical colour palette (matplotlib 'tab10' has ~10 distinct)
-    from matplotlib import colormaps
-    palette = colormaps["tab10"]
-    clusters = list(df_cloud["Cluster"].unique())
-    colour_map = {c: palette(i % 10) for i, c in enumerate(clusters)}
-
-    for cluster in clusters:
-        sub = df_cloud[df_cloud["Cluster"] == cluster]
-        colour = colour_map[cluster]
-        # Plot neighbours (coloured dots)
-        neighbours = sub[~sub["IsSeed"]]
-        ax.scatter(neighbours["x"], neighbours["y"], label=cluster,
-                   color=colour, alpha=0.55, s=40)
-        # Annotate the N nearest neighbours to the seed (Euclidean
-        # distance in the projected plane = visual proximity)
-        if annotate_neighbours and len(neighbours) > 0:
-            seed_row = sub[sub["IsSeed"]]
-            if not seed_row.empty:
-                sx, sy = seed_row.iloc[0]["x"], seed_row.iloc[0]["y"]
-                dists = ((neighbours["x"] - sx) ** 2
-                         + (neighbours["y"] - sy) ** 2)
-                closest = neighbours.iloc[
-                    dists.argsort()[:max_annotations_per_cluster]
-                ]
-                for _, row in closest.iterrows():
-                    ax.annotate(row["Word"], (row["x"], row["y"]),
-                                fontsize=7, alpha=0.75, color=colour,
-                                xytext=(4, 2), textcoords="offset points")
-        # Plot seeds (large black diamonds with bold labels)
-        for _, row in sub[sub["IsSeed"]].iterrows():
-            ax.scatter(row["x"], row["y"], marker="D", s=160,
-                       color="black", zorder=5,
-                       edgecolor="white", linewidths=1.5)
-            ax.annotate(row["Word"], (row["x"], row["y"]),
-                        fontsize=13, fontweight="bold",
-                        xytext=(10, 2), textcoords="offset points",
-                        zorder=6)
-
-    ax.legend(loc="best", fontsize=9, title="Seed word")
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_xlabel("PCA axis 1", fontsize=9, alpha=0.6)
-    ax.set_ylabel("PCA axis 2", fontsize=9, alpha=0.6)
-    fig.tight_layout()
-    return fig
+    return mta.plot_semantic_cloud(*args, **kwargs)
 
 
 def _action_semantic(args, matrices, corpus_wo, labels,
@@ -661,7 +609,11 @@ def _action_semantic(args, matrices, corpus_wo, labels,
     )
     save_dataframe(df_cloud, "semantic_cloud_coordinates",
                    output_dir, csv_json_formats)
-    fig = _plot_semantic_cloud(df_cloud)
+    fig = _plot_semantic_cloud(
+        df_cloud,
+        max_annotations_per_cluster=int(getattr(
+            args, "max_labels_per_cluster", 15)),
+    )
     if fig is not None:
         save_figure(fig, "semantic_cloud", output_dir, plot_formats)
 
@@ -906,6 +858,106 @@ def _action_compare_groups(args, matrices, labels,
     print(f"  ✓ Group comparison complete")
 
 
+# -----------------------------------------------------------------------------
+# Network views — bipartite topic↔document, topic↔words, combined
+# -----------------------------------------------------------------------------
+
+def _action_network(args, matrices, labels,
+                    output_dir, plot_formats):
+    """
+    Render bipartite network views of the topic model.
+
+    Three figures (controlled by --network-kind):
+      • doc      — topics ↔ documents
+      • word     — topics ↔ top-N representative words per topic
+      • combined — topics + documents + top-N words on one canvas
+      • all      — produce the three above (default)
+
+    Topic node sizes encode the cumulated edge weights attached to each
+    topic. Use --emphasize-differences to amplify the contrast on
+    balanced corpora.
+    """
+    # 1. Run the chosen topic model
+    method = getattr(args, "network_method", "nmf")
+    if method == "lda":
+        print(f"  Running LDA with k={args.n_topics} for network views…")
+        res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
+    else:
+        print(f"  Running NMF with k={args.n_topics} for network views…")
+        res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+
+    doctopic = res["doctopic"]
+    topicwords = res["topicwords"]
+    vocab = matrices["tf_names"] if method == "nmf" else matrices["lda_names"]
+
+    # 2. Auto-derive topic display names from each topic's top 3 words
+    topic_names = []
+    for k in range(topicwords.shape[0]):
+        top_idx = np.argsort(topicwords[k])[::-1][:3]
+        topic_names.append(" / ".join([vocab[i] for i in top_idx]))
+
+    kind = getattr(args, "network_kind", "all")
+    kinds = ["doc", "word", "combined"] if kind == "all" else [kind]
+
+    title_method = method.upper()
+    emph = bool(getattr(args, "emphasize_differences", False))
+    top_n = int(getattr(args, "network_top_n", 50))
+    min_edge = float(getattr(args, "network_min_edge", 0.10))
+
+    if "doc" in kinds:
+        print(f"  Rendering topic↔document network "
+              f"(min_edge={min_edge:.0%})…")
+        fig = mtanet.plot_topic_document_network(
+            doctopic=doctopic,
+            labels=labels,
+            topic_names=topic_names,
+            min_weight_pct=min_edge,
+            title=f"Topics ↔ Documents ({title_method}, K={args.n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_topic_document",
+                    output_dir, plot_formats)
+        plt.close(fig)
+
+    if "word" in kinds:
+        print(f"  Rendering topic↔word network (top {top_n} words)…")
+        fig = mtanet.plot_topic_word_network(
+            topicwords=topicwords,
+            vocab=vocab,
+            topic_names=topic_names,
+            top_n=top_n,
+            title=f"Topics ↔ Top-{top_n} words "
+                  f"({title_method}, K={args.n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_topic_words",
+                    output_dir, plot_formats)
+        plt.close(fig)
+
+    if "combined" in kinds:
+        # Use smaller top_n for combined view to keep it readable
+        comb_top_n = min(25, top_n)
+        print(f"  Rendering combined network (top {comb_top_n} words "
+              f"+ docs, min_edge={max(min_edge, 0.20):.0%})…")
+        fig = mtanet.plot_combined_network(
+            doctopic=doctopic,
+            topicwords=topicwords,
+            labels=labels,
+            vocab=vocab,
+            topic_names=topic_names,
+            top_n_words=comb_top_n,
+            min_doc_weight_pct=max(min_edge, 0.20),
+            title=f"Topics + Documents + Top-words "
+                  f"({title_method}, K={args.n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_combined",
+                    output_dir, plot_formats)
+        plt.close(fig)
+
+    print(f"  ✓ Network views complete")
+
+
 # =============================================================================
 # ARGUMENT PARSING
 # =============================================================================
@@ -934,7 +986,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Also save tables as JSON (for Stata/R pipelines).")
     p.add_argument("--action",
                    choices=["nmf", "lda", "evolution", "word-weights",
-                            "semantic", "compare-groups", "all"],
+                            "semantic", "compare-groups", "network", "all"],
                    help="Which analysis to run (required in batch mode).")
     p.add_argument("--n-topics", type=int, default=5,
                    help="Number of topics for NMF/LDA (default: 5).")
@@ -948,6 +1000,13 @@ def build_parser() -> argparse.ArgumentParser:
                    default="cooccurrence",
                    help="Embedding method for semantic action "
                         "(default: cooccurrence — no extra dependency).")
+    p.add_argument("--max-labels-per-cluster", type=int, default=15,
+                   help="Maximum number of word labels shown around each "
+                        "seed in the 2D semantic cloud (default: 15). "
+                        "Labels go to the closest neighbours of the seed; "
+                        "other points are still drawn but unlabeled. Raise "
+                        "this to label more words on sparse corpora; the "
+                        "full word list is always saved to the CSV/JSON.")
     p.add_argument("--window", type=int, default=2,
                    help="Rolling-mean window for evolution action (default: 2).")
     p.add_argument("--min-word-length", type=int, default=3,
@@ -973,6 +1032,29 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--groups-csv", type=str, default=None,
                    help="Path to a CSV with `filename` column + group "
                         "columns. Used if --groups-from csv.")
+    # Network-views action
+    p.add_argument("--network-method",
+                   choices=["nmf", "lda"],
+                   default="nmf",
+                   help="For --action network: which topic model to plot "
+                        "(default: nmf).")
+    p.add_argument("--network-kind",
+                   choices=["doc", "word", "combined", "all"],
+                   default="all",
+                   help="For --action network: which graph(s) to render "
+                        "(default: all = three graphs).")
+    p.add_argument("--network-top-n", type=int, default=50,
+                   help="For --action network: top-N words per topic in "
+                        "the topic↔word graph (default: 50).")
+    p.add_argument("--network-min-edge", type=float, default=0.10,
+                   help="For --action network: minimum document→topic "
+                        "edge weight, relative to the document's max "
+                        "topic weight, to display in the topic↔document "
+                        "graph (default: 0.10 = 10%%).")
+    p.add_argument("--emphasize-differences", action="store_true",
+                   help="For --action network: amplify visual size "
+                        "differences between topic nodes. Useful on "
+                        "balanced corpora where masses are similar.")
     return p
 
 
@@ -1052,9 +1134,10 @@ def run_interactive() -> int:
         print("  3. Weight of given words in topics and documents")
         print("  4. Semantic context (similar words + 2D cloud)")
         print("  5. Group comparison (significance tests)")
+        print("  6. Network views (topic↔doc, topic↔words, combined)")
         print("  0. Quit")
         print()
-        choice = input("Your choice [0-5]: ").strip()
+        choice = input("Your choice [0-6]: ").strip()
 
         if choice == "0":
             print("\nGoodbye!")
@@ -1069,6 +1152,8 @@ def run_interactive() -> int:
             _interactive_menu_4(session)
         elif choice == "5":
             _interactive_menu_5(session)
+        elif choice == "6":
+            _interactive_menu_6(session)
         else:
             print(f"  ✗ Invalid choice: {choice!r}")
 
@@ -1261,7 +1346,14 @@ def _interactive_menu_4(session):
                    session["output_dir"], {"csv", "json"})
 
     # 2D scatter plot (same logic as batch mode)
-    fig = _plot_semantic_cloud(df_cloud)
+    try:
+        max_labels = int(input(
+            "Max labels per seed in the 2D cloud [15]: "
+        ).strip() or "15")
+    except ValueError:
+        max_labels = 15
+    fig = _plot_semantic_cloud(df_cloud,
+                               max_annotations_per_cluster=max_labels)
     if fig is not None:
         save_figure(fig, "semantic_cloud",
                     session["output_dir"], {"pdf", "png"})
@@ -1391,6 +1483,116 @@ def _interactive_menu_5(session):
                       f"— no boxplots generated.")
 
     print("  ✓ Group comparison saved (CSV/JSON + PDF/PNG plots)")
+
+
+def _interactive_menu_6(session):
+    """Menu 6 — Network views (topic↔doc, topic↔words, combined)."""
+    if session["nmf"] is None and session["lda"] is None:
+        print("  ✗ Run NMF and/or LDA first (menu 1).")
+        return
+
+    # Method choice
+    if session["nmf"] is not None and session["lda"] is not None:
+        method = input("  Use NMF or LDA? (nmf/lda) [nmf]: ").strip().lower() or "nmf"
+        if method not in ("nmf", "lda"):
+            method = "nmf"
+    elif session["nmf"] is not None:
+        method = "nmf"
+        print("  Using NMF (only model available).")
+    else:
+        method = "lda"
+        print("  Using LDA (only model available).")
+
+    res = session[method]
+    doctopic = res["doctopic"]
+    topicwords = res["topicwords"]
+    vocab = (session["matrices"]["tf_names"] if method == "nmf"
+             else session["matrices"]["lda_names"])
+
+    # Kind of graph
+    print()
+    print("  Which graph(s)?")
+    print("    1. Topic ↔ Documents")
+    print("    2. Topic ↔ Top-N words")
+    print("    3. Combined (topics + docs + top words)")
+    print("    4. All three")
+    kc = input("  Choice [4]: ").strip() or "4"
+    kind_map = {"1": ["doc"], "2": ["word"], "3": ["combined"],
+                "4": ["doc", "word", "combined"]}
+    kinds = kind_map.get(kc, ["doc", "word", "combined"])
+
+    # Top-N words (only relevant if word or combined chosen)
+    top_n = 50
+    if "word" in kinds or "combined" in kinds:
+        try:
+            top_n = int(input("  Top-N words per topic [50]: ").strip() or "50")
+        except ValueError:
+            top_n = 50
+
+    # Min edge weight
+    try:
+        min_edge = float(input("  Min edge weight as %% of doc max [10]: ").strip()
+                         or "10") / 100.0
+    except ValueError:
+        min_edge = 0.10
+
+    # Emphasis
+    emph = input("  Emphasize topic-size differences? (y/N) ").strip().lower() == "y"
+
+    # Auto-name topics
+    topic_names = []
+    for k in range(topicwords.shape[0]):
+        top_idx = np.argsort(topicwords[k])[::-1][:3]
+        topic_names.append(" / ".join([vocab[i] for i in top_idx]))
+
+    out = session["output_dir"]
+    n_topics = topicwords.shape[0]
+    title_method = method.upper()
+
+    if "doc" in kinds:
+        print(f"  Rendering topic↔document network…")
+        fig = mtanet.plot_topic_document_network(
+            doctopic=doctopic, labels=session["labels"],
+            topic_names=topic_names,
+            min_weight_pct=min_edge,
+            title=f"Topics ↔ Documents ({title_method}, K={n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_topic_document",
+                    out, {"pdf", "png"})
+        plt.close(fig)
+
+    if "word" in kinds:
+        print(f"  Rendering topic↔word network (top {top_n})…")
+        fig = mtanet.plot_topic_word_network(
+            topicwords=topicwords, vocab=vocab,
+            topic_names=topic_names, top_n=top_n,
+            title=f"Topics ↔ Top-{top_n} words "
+                  f"({title_method}, K={n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_topic_words",
+                    out, {"pdf", "png"})
+        plt.close(fig)
+
+    if "combined" in kinds:
+        comb_top_n = min(25, top_n)
+        print(f"  Rendering combined network…")
+        fig = mtanet.plot_combined_network(
+            doctopic=doctopic, topicwords=topicwords,
+            labels=session["labels"], vocab=vocab,
+            topic_names=topic_names,
+            top_n_words=comb_top_n,
+            min_doc_weight_pct=max(min_edge, 0.20),
+            title=f"Topics + Documents + Top-words "
+                  f"({title_method}, K={n_topics})",
+            emphasize_differences=emph,
+        )
+        save_figure(fig, f"network_{method}_combined",
+                    out, {"pdf", "png"})
+        plt.close(fig)
+
+    print(f"  ✓ Network views saved (PDF + PNG)")
 
 
 # =============================================================================

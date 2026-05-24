@@ -5,6 +5,8 @@ scikit-learn>=1.3
 scipy>=1.10
 matplotlib>=3.7
 seaborn>=0.12
+networkx>=3.0
+fa2-modified>=0.4
 
 # Optional: only needed if you want to use the Word2Vec embedding method
 # on page 5 (Semantic context). The default Co-Occurrence + PCA method

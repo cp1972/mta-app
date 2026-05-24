@@ -157,6 +157,38 @@ def download_csv(df: pd.DataFrame, name: str) -> None:
     )
 
 
+def download_figure(fig, name: str, formats: tuple = ("png", "pdf"),
+                    dpi: int = 150) -> None:
+    """
+    Render side-by-side download buttons for an already-built matplotlib
+    Figure. Used by pages that produce figures directly (e.g. network
+    views) rather than tabular chart data.
+
+    formats : tuple of ('png', 'pdf')
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    cols = st.columns(len(formats))
+    for col, fmt in zip(cols, formats):
+        buf = io.BytesIO()
+        if fmt == "png":
+            fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+            mime = "image/png"
+        elif fmt == "pdf":
+            fig.savefig(buf, format="pdf", bbox_inches="tight")
+            mime = "application/pdf"
+        else:
+            continue
+        buf.seek(0)
+        with col:
+            st.download_button(
+                label=f"⬇ Download {name}.{fmt}",
+                data=buf,
+                file_name=f"{name}_{ts}.{fmt}",
+                mime=mime,
+                key=f"dl_{name}_{fmt}_{ts}",
+            )
+
+
 def download_png_via_matplotlib(
     chart_data: pd.DataFrame,
     kind: str,
