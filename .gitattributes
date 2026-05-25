@@ -1,0 +1,66 @@
+# .gitattributes — line-ending normalization for cross-platform safety
+#
+# Why this file exists
+# ====================
+# Without it, Git's default `core.autocrlf` behaviour can convert line
+# endings in ways that break the Windows launchers (.bat files). The
+# classic symptom: cmd.exe parses an LF-only .bat file by chunks, and
+# truncates `echo` into `cho` or `ho`, yielding errors like
+#     "'ho' n'est pas reconnu en tant que commande..."
+#
+# This file pins line endings per file extension so that every clone on
+# every OS gets the right format.
+
+# Default: let Git decide for text files, but always store as LF in repo
+* text=auto eol=lf
+
+# Windows scripts: MUST be CRLF, or cmd.exe fails on multi-line constructs
+# (labels :xxx, goto, if/else, multi-line blocks in parentheses).
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# Unix scripts: MUST be LF, or bash refuses to run them
+# (`/bin/bash^M: bad interpreter` error).
+*.sh        text eol=lf
+*.command   text eol=lf
+
+# Python: LF everywhere (PEP 8 + standard practice). Avoids merge
+# conflicts when collaborators are on different OSes.
+*.py   text eol=lf
+
+# Web/code: LF
+*.js     text eol=lf
+*.css    text eol=lf
+*.html   text eol=lf
+*.json   text eol=lf
+*.yaml   text eol=lf
+*.yml    text eol=lf
+*.toml   text eol=lf
+
+# Markup/doc: LF
+*.md     text eol=lf
+*.tex    text eol=lf
+*.txt    text eol=lf
+
+# Binary files: never touch them
+*.pdf       binary
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.zip       binary
+*.tar       binary
+*.tar.gz    binary
+*.tgz       binary
+*.gz        binary
+*.xlsx      binary
+*.xls       binary
+*.docx      binary
+*.doc       binary
+*.pptx      binary
+*.ppt       binary
+*.ttf       binary
+*.otf       binary
+*.woff      binary
+*.woff2     binary

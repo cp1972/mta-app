@@ -19,6 +19,10 @@ Network views — bipartite graph visualizations of the topic model — are adde
 
   - `plot_semantic_cloud` was moved from `MTA_v3.py` to `mta_core.py` so that both the CLI and the Streamlit page can call it for publication-ready static exports. A thin wrapper under the old private name `_plot_semantic_cloud` is kept in `MTA_v3.py` so existing call sites keep working.
 
+### Bug fixes
+
+  - **Windows launcher (`start_MTA.bat`).** The Windows menu launcher had Unix-style line endings (LF only) instead of Windows-style (CRLF). `cmd.exe` parses multi-line `.bat` files that contain labels (`:menu`, `:streamlit`, …) and `goto` instructions correctly only when lines end with CRLF; without it, the file was parsed as one long line and produced cryptic errors such as `'ho' n'est pas reconnu en tant que commande` (truncations of `echo`) or `'ot' n'est pas reconnu` (truncations of `not`). Fixed by reconverting all `.bat` files to CRLF and adding a `.gitattributes` file at the repository root that pins line endings per file extension: `*.bat` → CRLF, `*.sh` / `*.command` → LF, `*.py` → LF, binary types (PDF, PNG, ZIP, …) are marked as binary so Git never touches them. This guarantees correct line endings on every fresh clone, regardless of OS or `core.autocrlf` setting.
+
 The visualization engine lives in a new module `mta_network.py`. New dependencies: `networkx>=3.0`, `fa2-modified>=0.4`. Both are added to `requirements.txt`. No existing functionality has been changed.
 
 ## MTA version 3.0 -- May 2026 -- Major release
