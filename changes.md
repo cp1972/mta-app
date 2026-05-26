@@ -1,5 +1,52 @@
 # Major changes in versions of MTA
 
+## MTA version 3.4 -- May 2026 -- Minor release
+
+User-facing simplification of the axis analysis feature. The 3.2 release introduced "Axis projection" (visual scatter), the 3.3 release added "Axis statistics" (enriched export + ANOVA) as a separate page/action/menu. After user feedback that the strong overlap between the two — same model choice, same multi-select widgets for the topic poles, same custom-label fields — was confusing students who had to redefine their axes twice, the two are now unified everywhere.
+
+### What's new
+
+  - **Streamlit: one page with tabs.** The former pages 8 ("Axis projection") and 9 ("Axis statistics") are merged into a single page **"Axis analysis"**. The axes are defined once in a shared header section, and the user then chooses between two tabs: **📍 Projection (visual)** — interactive Altair scatter, endpoint annotations, publication-ready matplotlib export — and **📊 Statistics (ANOVA + enriched export)** — group factor selector, summary table with both classical F + Tukey HSD and Welch F + BH-corrected t-tests side by side, convergence indicator per axis, per-axis pairwise comparisons, boxplots. The page file is renamed `8_Axis_analysis.py`; the previous `9_Axis_statistics.py` is removed.
+
+  - **CLI: one action `axis-analysis`** that does everything in a single pass (the topic model is fit once, the projection figure and the enriched export + ANOVA tables + boxplots are all produced together). The former actions `axis-projection` (3.2) and `axis-stats` (3.3) remain accepted as **deprecated aliases**: scripts that use them keep working, but emit a deprecation notice on stderr. They run the unified action, which is a superset of what they used to do (so no script breaks; some get more output than before).
+
+  - **Interactive menu: one entry 7 "Axis analysis"** instead of separate 7 and 8. After collecting the axes, the menu asks: "Projection only / Statistics only / Both (recommended)" so users still have fine-grained control without seeing the same configuration screens twice.
+
+### Why this matters pedagogically
+
+  - The fusion reflects the **conceptual unity** of the operation: once you have defined what your axes mean, looking at them visually and testing them statistically are two ways of asking the same question. Splitting them into two pages suggested they were two separate analyses requiring two separate workflows.
+
+  - The fusion also reflects what the **third lecture session** argues (*Erwartung 1* nuanced): topic-modelling outputs can serve as the basis for both qualitative interpretation (the visual axis) and quantitative inference (the ANOVA on the same axis). Having both behind a single page makes the bridge concrete rather than splitting it into "the qualitative side" and "the quantitative side" of the same tool.
+
+### Backward compatibility
+
+  - All scripts using `--action axis-projection` or `--action axis-stats` keep working. They produce a superset of their previous output (projection now also produces the enriched export and ANOVA; stats now also produces the projection figure), since fitting the topic model is the costly step and producing both downstream outputs is essentially free.
+
+  - The internal Python functions `_action_axis_projection` and `_action_axis_stats` are replaced by a single `_action_axis_analysis`. If you have your own scripts calling `mta_core.build_axis_export_dataframe`, `axis_anova_one_way`, `plot_axis_anova_boxplots`, `plot_axis_projection` or `project_documents_on_axes` directly — all of these are unchanged.
+
+## MTA version 3.3 -- May 2026 -- Minor release
+
+Axis statistics — the natural follow-up of the Axis projection feature (3.2). Once documents have been projected onto user-defined semantic axes, this release lets the researcher run a one-way ANOVA on each axis to test whether documents from different groups (derived from filenames) have significantly different positions. It also enriches the CSV export so that the projection results can flow directly into Stata or R for further analysis.
+
+### What's new
+
+  - **Three new functions in `mta_core.py`**: `build_axis_export_dataframe()` builds a DataFrame with document, metadata, axis coordinates, dominant topic and all K topic weights — ready to load into Stata/R. `axis_anova_one_way()` runs BOTH classical F-test with Tukey HSD post-hoc AND Welch's robust F-test with Benjamini-Hochberg-corrected pairwise t-tests, plus the effect size η² (proportion of axis variance explained by the group factor). `plot_axis_anova_boxplots()` draws boxplots of axis coordinates per group, one subplot per axis, with Tab10 colors per group.
+
+  - **Why two tests side by side.** The classical F-test (with Tukey post-hoc) is the textbook epistemological reference, but assumes equal variances across groups. Welch's F-test (with Welch t-tests + BH for pairs) drops that assumption. Showing both lets the user see *convergence* (both significant or both not — robust conclusion) and *divergence* (variance heterogeneity should be discussed; the Welch result is more trustworthy in this case). This is the same statistical pattern as in the "Group comparison" page (Welch + BH on raw topic weights), extended here to the user-defined axes.
+
+  - **Streamlit page 9 — "Axis statistics"**: reuses the same axis-definition UI as page 8 (multi-selects for poles, custom labels, 1–3 axes), then adds a group factor selector (filename position + separator + minimum group size). Displays the enriched export preview with a download button, an ANOVA summary table (F and p for both tests, plus η² for each axis), per-axis convergence indicator (green for "both significant", blue for "both not", yellow for divergence), pairwise tables for Tukey and Welch+BH side by side, and the boxplots with matplotlib export.
+
+  - **Batch action `axis-stats`** for `MTA_v3.py`. Same axis-definition options as `axis-projection` (reuses `--axis-x/y/z` and `--axis-{x,y,z}-label`), plus two new options: `--axis-stats-group-position` (default: same as `--group-position`, the factor used elsewhere in MTA; can be overridden to test against a different filename position) and `--axis-stats-min-group-size` (default: 3; drop groups smaller than this).
+
+  - **Interactive CLI menu entry 8** — same logic from the terminal: prompts for axes, group position, separator, minimum group size, then prints the ANOVA summary to the console and saves all four tables + boxplots PDF/PNG.
+
+  - **Pedagogical paragraph** in `MTA-for-Master/README.md` showing how to use the enriched export in R (`lm(axis_x ~ group_pos2, data=df)`) and in Stata (`regress axis_x i.group_pos2`). The point: once the axis coordinates are exported, they become ordinary continuous variables that can serve as either dependent or independent variables in any statistical model — the methodological bridge between qualitative and quantitative work that the third lecture session argues for.
+
+### Internal changes
+
+  - `axis_anova_one_way()` implements Welch's F manually since scipy doesn't ship it as a single call (only as a step within `f_oneway`). The implementation follows Welch (1951): group weights $w_i = n_i / s_i^2$, weighted grand mean, and the corrected denominator with the $(k^2-1)/3$ term.
+  - All four CSV outputs (`axis_export`, `axis_anova_summary`, `axis_anova_welch_pairwise`, `axis_anova_tukey_pairwise`, plus `axis_anova_group_summary`) use sanitized column names (alphanumeric + underscore, capped at 30 chars) so that they load cleanly in Stata.
+
 ## MTA version 3.2 -- May 2026 -- Minor release
 
 Axis projection — user-defined semantic axes on the doctopic matrix — is added to all three interfaces (Streamlit, interactive CLI menu, batch mode). This is a new analytical tool, not just a visualization: it lets the researcher project documents onto 1, 2 or 3 axes that they define themselves as oppositions between pools of topics.

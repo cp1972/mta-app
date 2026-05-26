@@ -69,8 +69,8 @@ network_page = st.Page(
     icon="🕸",
 )
 axis_page = st.Page(
-    "pages/8_Axis_projection.py",
-    title="Axis projection",
+    "pages/8_Axis_analysis.py",
+    title="Axis analysis",
     icon="🎯",
 )
 

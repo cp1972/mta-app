@@ -17,9 +17,9 @@ that older work remains reproducible.
 
 | Folder              | What it contains                                      | For whom                                 |
 | ------------------- | ----------------------------------------------------- | ---------------------------------------- |
-| `MTA-for-Master/`   | **Versions 3.0–3.2** — Streamlit web app + modern CLI | Everyone, current users                  |
+| `MTA-for-Master/`   | **Versions 3.0–3.4** — Streamlit web app + modern CLI | Everyone, current users                  |
 | `archive/`          | **Versions ≤ 2.0** — original single-script `MTA.py`  | Users with legacy workflows or do-files  |
-| `changes.md`        | Full version history (3.2 down to 0.1, January 2017)  | Anyone tracking what changed             |
+| `changes.md`        | Full version history (3.4 down to 0.1, January 2017)  | Anyone tracking what changed             |
 | `LICENSE`           | License                                               | —                                        |
 
 If you arrived here for the first time, **use `MTA-for-Master/`**. The
@@ -46,12 +46,16 @@ can still find it, its documentation, and reproduce earlier analyses.
     topic model — Topic ↔ Document, Topic ↔ top-words, or combined —
     rendered with ForceAtlas2 (the same algorithm Gephi uses) and a
     Solarized color palette.
-  - **Axis projection** (3.2+): project documents onto 1, 2 or 3
-    user-defined semantic axes, each formed by an opposition between
-    two pools of topics. Brings into MTA the spirit of Bourdieu's
-    correspondence analysis and Slapin & Proksch's text scaling —
-    axes are interpretable by design, not just directions of maximum
-    variance.
+  - **Axis analysis** (3.2+; unified in 3.4): project documents onto 1,
+    2 or 3 user-defined semantic axes, each formed by an opposition
+    between two pools of topics, and either explore them visually or
+    test groups statistically with one-way ANOVA (classical + Welch
+    side by side, with Tukey and BH-corrected pairwise comparisons).
+    Brings into MTA the spirit of Bourdieu's correspondence analysis
+    and Slapin & Proksch's text scaling — axes are interpretable by
+    design, not just directions of maximum variance. The enriched CSV
+    export is designed to plug directly into Stata or R for downstream
+    analysis.
   - **Visualisation** with high-quality plots (PDF + PNG, multilingual:
     English / French / German) and **results saved as tables** (CSV +
     JSON) for further use in Stata, R, Gephi, or any spreadsheet.

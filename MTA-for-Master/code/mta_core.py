@@ -1901,3 +1901,428 @@ def _annotate_extreme_documents(ax, coords, labels, max_labels):
         ax.annotate(label, (coords[i, 0], coords[i, 1]),
                     fontsize=6.5, color="#333", alpha=0.7,
                     xytext=(3, 2), textcoords="offset points")
+
+
+# =============================================================================
+# AXIS STATISTICS — enriched export + ANOVA on axis coordinates
+# =============================================================================
+#
+# This module ("Level 4" of the PCA discussion) builds on the axis
+# projection (Level 3) and produces:
+#
+#   1. An enriched CSV/DataFrame combining axis coordinates with the
+#      metadata extracted from filenames, the dominant topic and all
+#      topic weights — ready to be loaded into Stata/R for regression,
+#      cluster analysis, etc.
+#
+#   2. A one-way ANOVA on each axis to test whether documents from
+#      different groups have significantly different positions on
+#      the axis. Returns BOTH:
+#        - Welch's ANOVA (robust to unequal variances) + pairwise
+#          Welch t-tests with Benjamini-Hochberg correction (same
+#          statistical pattern as the menu 6 "Group comparison",
+#          which uses Welch + BH on raw topic weights)
+#        - Classical F-test (one-way ANOVA) + Tukey HSD post-hoc
+#          (the textbook epistemological reference)
+#      Showing both lets the user see when they converge (robust
+#      conclusion) and when they diverge (variance heterogeneity
+#      should be discussed).
+#
+# Used by: the Streamlit page 9, the interactive CLI menu 8, and the
+# batch CLI action `axis-stats`.
+# =============================================================================
+
+
+def build_axis_export_dataframe(
+    labels: Sequence[str],
+    coords: np.ndarray,
+    axis_titles: Sequence[str],
+    doctopic: np.ndarray,
+    topicwords: np.ndarray,
+    vocab: Sequence[str],
+    metadata: Optional[Dict[str, Dict[str, str]]] = None,
+) -> pd.DataFrame:
+    """
+    Build the enriched export DataFrame for axis projection.
+
+    Columns (in order):
+      - document               : filename
+      - <metadata columns>     : one column per metadata key, if provided
+      - axis_x [, axis_y, axis_z] : the user-defined axis coordinates,
+        renamed with the axis title sanitized
+      - dominant_topic         : index of the topic with the highest
+                                 doctopic weight for each document
+      - dominant_topic_label   : short label "T{k}: word1/word2/word3"
+      - dominant_weight        : the value of the dominant topic weight
+      - topic_1, topic_2, ..., topic_K : all K topic weights
+
+    Parameters
+    ----------
+    labels : sequence of str
+        Document filenames, in the same order as the rows of coords.
+    coords : ndarray (D, n_axes)
+        Document scores on 1, 2 or 3 user-defined axes.
+    axis_titles : sequence of str
+        Display names of the axes, used to build sanitized column names.
+    doctopic : ndarray (D, K)
+        Document-topic weight matrix.
+    topicwords : ndarray (K, W)
+        Topic-word weight matrix (used to build short topic labels).
+    vocab : sequence of str
+        Vocabulary.
+    metadata : optional dict
+        Mapping {column_name: {filename: value}}. Each key becomes a
+        column. Use this to inject groups extracted from filenames.
+
+    Returns
+    -------
+    DataFrame with one row per document.
+    """
+    D = coords.shape[0]
+    n_axes = coords.shape[1]
+    K = topicwords.shape[0]
+
+    out = pd.DataFrame({"document": list(labels)})
+
+    # Metadata columns
+    if metadata:
+        for col_name, mapping in metadata.items():
+            out[col_name] = [mapping.get(fn, "") for fn in labels]
+
+    # Axis coordinate columns. We use a sanitized version of the axis
+    # title so that the column name is informative when opened in
+    # Stata / R. If the title is long or contains special characters,
+    # we fall back to axis_x / axis_y / axis_z.
+    axis_letters = ["x", "y", "z"]
+    for j in range(n_axes):
+        sanitized = _sanitize_column_name(axis_titles[j])
+        col = f"axis_{axis_letters[j]}"
+        if sanitized:
+            col = f"axis_{axis_letters[j]}_{sanitized}"
+        out[col] = coords[:, j]
+
+    # Dominant topic
+    dom = np.argmax(doctopic, axis=1)
+    out["dominant_topic"] = dom
+    topic_labels = []
+    for k in range(K):
+        top_idx = np.argsort(topicwords[k])[::-1][:3]
+        topic_labels.append("T{}: ".format(k + 1)
+                            + "/".join(str(vocab[i]) for i in top_idx))
+    out["dominant_topic_label"] = [topic_labels[k] for k in dom]
+    out["dominant_weight"] = doctopic[np.arange(D), dom]
+
+    # All K topic weights (for users who want to redo analyses without
+    # re-running MTA — typical Stata/R workflow)
+    for k in range(K):
+        out[f"topic_{k + 1}"] = doctopic[:, k]
+
+    return out
+
+
+def _sanitize_column_name(name: str, max_length: int = 30) -> str:
+    """
+    Turn an arbitrary string into a column name that Stata/R will accept.
+
+    Keeps alphanumeric characters and underscores; collapses anything
+    else to underscores; truncates to max_length.
+    """
+    if not name:
+        return ""
+    # Replace ↔ and similar with ' vs '
+    cleaned = (name.replace("↔", " vs ")
+                   .replace("→", " to ")
+                   .replace("—", "_")
+                   .replace("–", "_")
+                   .replace("/", "_"))
+    # Keep alnum + underscore, collapse anything else
+    out = []
+    last_underscore = False
+    for ch in cleaned:
+        if ch.isalnum():
+            out.append(ch.lower())
+            last_underscore = False
+        elif not last_underscore:
+            out.append("_")
+            last_underscore = True
+    result = "".join(out).strip("_")
+    if len(result) > max_length:
+        result = result[:max_length].rstrip("_")
+    return result
+
+
+def axis_anova_one_way(
+    coord_values: np.ndarray,
+    group_labels: Sequence[str],
+    min_group_size: int = 3,
+) -> Dict:
+    """
+    One-way ANOVA on a single axis of coordinates, grouped by `group_labels`.
+
+    Runs BOTH:
+      - Welch's ANOVA (robust to unequal variances) + pairwise Welch
+        t-tests with Benjamini-Hochberg correction
+      - Classical F-test (one-way ANOVA) + Tukey HSD post-hoc
+
+    Parameters
+    ----------
+    coord_values : ndarray, shape (D,)
+        Documents' coordinates on one axis.
+    group_labels : sequence of str, length D
+        Group label for each document.
+    min_group_size : int
+        Drop groups with fewer than this many documents (default 3).
+        ANOVA assumes each group has a defined mean and (for the
+        classical version) variance — very small groups break this.
+
+    Returns
+    -------
+    dict with the following keys:
+      group_summary    : DataFrame (one row per group: n, mean, std)
+      welch_anova      : dict with F, df_num, df_den, p_value
+      welch_pairwise   : DataFrame (pairwise Welch t with BH-corrected p)
+      classical_anova  : dict with F, df_num, df_den, p_value, eta_squared
+      tukey_pairwise   : DataFrame (pairwise Tukey HSD: mean diff, ci, p)
+      dropped_groups   : list of group names that were dropped (< min size)
+      n_groups_used    : int
+    """
+    from scipy import stats
+
+    # Convert to arrays
+    coord_values = np.asarray(coord_values, dtype=float)
+    group_labels = np.asarray(group_labels)
+    assert len(coord_values) == len(group_labels), \
+        "coord_values and group_labels must have the same length"
+
+    # Drop missing/empty group labels
+    valid_mask = pd.notna(group_labels) & (group_labels != "")
+    coord_values = coord_values[valid_mask]
+    group_labels = group_labels[valid_mask]
+
+    # Identify groups and their sizes
+    unique_groups, counts = np.unique(group_labels, return_counts=True)
+    kept = unique_groups[counts >= min_group_size]
+    dropped = sorted(set(unique_groups) - set(kept))
+    if len(kept) < 2:
+        return {
+            "group_summary": pd.DataFrame(),
+            "welch_anova": None,
+            "welch_pairwise": pd.DataFrame(),
+            "classical_anova": None,
+            "tukey_pairwise": pd.DataFrame(),
+            "dropped_groups": dropped,
+            "n_groups_used": int(len(kept)),
+            "error": "Need at least 2 groups with >= "
+                     f"{min_group_size} documents",
+        }
+
+    # Filter to kept groups
+    mask = np.isin(group_labels, kept)
+    cv = coord_values[mask]
+    gl = group_labels[mask]
+    samples = [cv[gl == g] for g in kept]
+
+    # ---- Group summary -----------------------------------------------------
+    summary = pd.DataFrame({
+        "group": [str(g) for g in kept],
+        "n": [len(s) for s in samples],
+        "mean": [float(np.mean(s)) for s in samples],
+        "std": [float(np.std(s, ddof=1)) for s in samples],
+        "min": [float(np.min(s)) for s in samples],
+        "max": [float(np.max(s)) for s in samples],
+    })
+
+    # ---- Classical one-way ANOVA + Tukey HSD -------------------------------
+    f_stat, p_classical = stats.f_oneway(*samples)
+    n_total = sum(len(s) for s in samples)
+    df_num = len(kept) - 1
+    df_den = n_total - len(kept)
+    # eta squared = SS_between / SS_total
+    grand_mean = float(np.mean(cv))
+    ss_between = sum(len(s) * (np.mean(s) - grand_mean) ** 2 for s in samples)
+    ss_total = float(np.sum((cv - grand_mean) ** 2))
+    eta_sq = float(ss_between / ss_total) if ss_total > 0 else 0.0
+
+    classical = {
+        "F": float(f_stat),
+        "df_num": int(df_num),
+        "df_den": int(df_den),
+        "p_value": float(p_classical),
+        "eta_squared": eta_sq,
+    }
+
+    # Tukey HSD
+    try:
+        tukey = stats.tukey_hsd(*samples)
+        # Build pairwise DataFrame
+        tk_rows = []
+        for i in range(len(kept)):
+            for j in range(i + 1, len(kept)):
+                tk_rows.append({
+                    "group_a": str(kept[i]),
+                    "group_b": str(kept[j]),
+                    "mean_diff": float(tukey.statistic[i, j]),
+                    "ci_low": float(tukey.confidence_interval(
+                        confidence_level=0.95).low[i, j]),
+                    "ci_high": float(tukey.confidence_interval(
+                        confidence_level=0.95).high[i, j]),
+                    "p_tukey": float(tukey.pvalue[i, j]),
+                })
+        tukey_df = pd.DataFrame(tk_rows)
+    except Exception:
+        tukey_df = pd.DataFrame()
+
+    # ---- Welch ANOVA + pairwise Welch t-tests with BH ----------------------
+    welch_anova_res = _welch_anova(samples)
+
+    # Pairwise Welch t
+    welch_rows = []
+    for i in range(len(kept)):
+        for j in range(i + 1, len(kept)):
+            t_stat, p_welch = stats.ttest_ind(
+                samples[i], samples[j], equal_var=False,
+            )
+            welch_rows.append({
+                "group_a": str(kept[i]),
+                "group_b": str(kept[j]),
+                "mean_diff": float(np.mean(samples[i])
+                                   - np.mean(samples[j])),
+                "t": float(t_stat),
+                "p_welch": float(p_welch),
+            })
+    welch_df = pd.DataFrame(welch_rows)
+    # Apply BH correction
+    if not welch_df.empty:
+        bh = benjamini_hochberg_correction(welch_df["p_welch"].tolist())
+        welch_df["p_welch_BH"] = bh
+
+    return {
+        "group_summary": summary,
+        "welch_anova": welch_anova_res,
+        "welch_pairwise": welch_df,
+        "classical_anova": classical,
+        "tukey_pairwise": tukey_df,
+        "dropped_groups": dropped,
+        "n_groups_used": int(len(kept)),
+    }
+
+
+def _welch_anova(samples: List[np.ndarray]) -> Dict:
+    """
+    Welch's ANOVA, also known as the heteroscedastic one-way ANOVA.
+
+    More robust than the classical F-test when group variances differ.
+    Based on the formulas in Welch (1951). scipy doesn't ship it as
+    a single call, so we compute it manually.
+
+    Returns dict with F, df_num, df_den, p_value.
+    """
+    from scipy import stats
+
+    k = len(samples)
+    if k < 2:
+        return None
+
+    n = np.array([len(s) for s in samples], dtype=float)
+    means = np.array([np.mean(s) for s in samples])
+    vars_ = np.array([np.var(s, ddof=1) for s in samples])
+    # Weights: w_i = n_i / s_i^2
+    # If a variance is exactly 0 (constant group), Welch's formula
+    # is degenerate; bump it with a tiny epsilon to avoid /0
+    vars_safe = np.where(vars_ > 0, vars_, 1e-12)
+    w = n / vars_safe
+    sum_w = float(np.sum(w))
+    grand_mean = float(np.sum(w * means) / sum_w)
+
+    num = float(np.sum(w * (means - grand_mean) ** 2)) / (k - 1)
+    denom_term = float(np.sum((1 - w / sum_w) ** 2 / (n - 1)))
+    denom = 1.0 + (2 * (k - 2) / (k ** 2 - 1)) * denom_term
+    F = num / denom
+
+    df_num = k - 1
+    df_den = (k ** 2 - 1) / (3 * denom_term) if denom_term > 0 else np.inf
+    p_value = float(1.0 - stats.f.cdf(F, df_num, df_den))
+
+    return {
+        "F": float(F),
+        "df_num": int(df_num),
+        "df_den": float(df_den),
+        "p_value": p_value,
+    }
+
+
+def plot_axis_anova_boxplots(
+    axis_values: Dict[str, np.ndarray],
+    group_labels: Sequence[str],
+    axis_titles: Optional[Dict[str, str]] = None,
+    figsize: Optional[Tuple[float, float]] = None,
+    title: Optional[str] = None,
+    min_group_size: int = 3,
+):
+    """
+    Boxplots of axis coordinates by group, one subplot per axis.
+
+    Parameters
+    ----------
+    axis_values : dict {axis_letter: ndarray}
+        One entry per axis, e.g. {'X': coords_x, 'Y': coords_y}.
+    group_labels : sequence of str
+        Group label for each document (must be aligned with the arrays).
+    axis_titles : optional dict {axis_letter: display_title}
+        Display name for each axis. Defaults to axis_letter.
+    figsize : optional (width, height)
+        Defaults to (5 per axis, 5).
+    title : optional figure title.
+    min_group_size : drop groups smaller than this.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    n_axes = len(axis_values)
+    if n_axes == 0:
+        return None
+    if figsize is None:
+        figsize = (5 * n_axes, 5)
+
+    fig, axes = plt.subplots(1, n_axes, figsize=figsize, squeeze=False)
+    axes = axes[0]  # 1D row
+
+    # Identify groups large enough
+    glabels = np.asarray(group_labels)
+    valid_mask = pd.notna(glabels) & (glabels != "")
+    unique_groups, counts = np.unique(glabels[valid_mask],
+                                       return_counts=True)
+    kept = sorted(unique_groups[counts >= min_group_size],
+                  key=lambda g: str(g))
+
+    palette = plt.get_cmap("tab10")
+    color_map = {g: palette(i % 10) for i, g in enumerate(kept)}
+
+    for ax_idx, (letter, values) in enumerate(axis_values.items()):
+        ax = axes[ax_idx]
+        values = np.asarray(values, dtype=float)
+        per_group = []
+        for g in kept:
+            mask = (glabels == g) & valid_mask
+            per_group.append(values[mask])
+
+        bp = ax.boxplot(per_group, patch_artist=True, widths=0.5,
+                         labels=[str(g) for g in kept],
+                         medianprops=dict(color="black", linewidth=1.5))
+        for patch, g in zip(bp["boxes"], kept):
+            patch.set_facecolor(color_map[g])
+            patch.set_alpha(0.6)
+            patch.set_edgecolor("#333")
+
+        ax.axhline(0, color="#888", linewidth=0.5, linestyle="--", zorder=0)
+        ttl = (axis_titles or {}).get(letter, letter)
+        ax.set_title(f"Axis {letter} — {ttl}", fontsize=10)
+        ax.set_ylabel("Coordinate", fontsize=9)
+        ax.tick_params(axis="x", rotation=20, labelsize=8)
+        ax.grid(axis="y", alpha=0.3)
+
+    if title:
+        fig.suptitle(title, fontsize=12, y=1.02)
+    fig.tight_layout()
+    return fig

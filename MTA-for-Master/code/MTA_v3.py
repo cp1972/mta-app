@@ -231,10 +231,32 @@ def run_batch(args: argparse.Namespace) -> int:
         elif action == "network":
             _action_network(args, matrices, labels,
                             output_dir, plot_formats)
+        elif action == "axis-analysis":
+            _action_axis_analysis(args, matrices, labels,
+                                   output_dir, csv_json_formats,
+                                   plot_formats)
         elif action == "axis-projection":
-            _action_axis_projection(args, matrices, labels,
-                                     output_dir, csv_json_formats,
-                                     plot_formats)
+            # Deprecated alias kept for scripts that still use the
+            # 3.2 name. Runs the unified axis-analysis with a notice.
+            print("  ⚠ --action axis-projection is a deprecated alias of "
+                  "axis-analysis since MTA 3.4. It now runs the full "
+                  "axis-analysis (projection + statistics) in one pass. "
+                  "Update your scripts when convenient.",
+                  file=sys.stderr)
+            _action_axis_analysis(args, matrices, labels,
+                                   output_dir, csv_json_formats,
+                                   plot_formats)
+        elif action == "axis-stats":
+            # Deprecated alias kept for scripts that still use the
+            # 3.3 name. Same comment as above.
+            print("  ⚠ --action axis-stats is a deprecated alias of "
+                  "axis-analysis since MTA 3.4. It now runs the full "
+                  "axis-analysis (projection + statistics) in one pass. "
+                  "Update your scripts when convenient.",
+                  file=sys.stderr)
+            _action_axis_analysis(args, matrices, labels,
+                                   output_dir, csv_json_formats,
+                                   plot_formats)
         else:
             print(f"  ✗ Unknown action: {action}", file=sys.stderr)
             return 2
@@ -1018,37 +1040,54 @@ def _axis_label_from_words(pole_words: list, max_chars: int = 25) -> str:
     return label
 
 
-def _action_axis_projection(args, matrices, labels,
-                             output_dir, csv_json_formats, plot_formats):
+def _action_axis_analysis(args, matrices, labels,
+                            output_dir, csv_json_formats, plot_formats):
     """
-    Project documents onto 1, 2 or 3 user-defined semantic axes.
+    Unified axis analysis: projects documents onto user-defined semantic
+    axes AND runs statistics on the resulting coordinates (enriched
+    CSV export + one-way ANOVA per axis with both classical F + Tukey
+    HSD and Welch F + BH-corrected pairwise t).
 
-    Each axis is a contrast between two pools of topics — the axis
-    direction is a vector in topic space with +1/|R| on the right
-    pole, -1/|L| on the left pole, 0 elsewhere. Documents are then
-    projected by simple dot product. See `mta.axis_direction_vector`.
+    Replaces the former separate `_action_axis_projection` and
+    `_action_axis_stats` in MTA 3.4 — they were almost-redundant since
+    the projection coordinates are also the input to the ANOVA. The two
+    are now produced in a single pass, which is faster (the topic model
+    is fit once) and pedagogically clearer.
+
+    Outputs (all in `output_dir`):
+        - Projection figure (PDF/PNG) — the visual plot
+        - axis_export_<method>.csv/json — the enriched export
+        - axis_anova_summary_<method>.csv/json — one row per axis
+        - axis_anova_welch_pairwise_<method>.csv/json
+        - axis_anova_tukey_pairwise_<method>.csv/json
+        - axis_anova_group_summary_<method>.csv/json
+        - axis_anova_boxplots_<method>.pdf/png — boxplots per group
+
+    Required CLI options: --axis-x (and optionally --axis-y, --axis-z).
+    Group factor for ANOVA: --axis-stats-group-position (defaults to
+    --group-position).
     """
     if not args.axis_x:
-        print("  ✗ --axis-x is required for axis-projection action",
+        print("  ✗ --axis-x is required for axis-analysis action",
               file=sys.stderr)
         print("    Example: --axis-x \"0,1 / 2,3\"", file=sys.stderr)
         return
 
-    # Run the topic model
+    # 1. Run the topic model (NMF or LDA)
     method = getattr(args, "axis_method", "nmf")
     if method == "lda":
-        print(f"  Running LDA with k={args.n_topics} for axis projection…")
+        print(f"  Running LDA with k={args.n_topics}…")
         res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
         vocab = list(matrices["lda_names"])
     else:
-        print(f"  Running NMF with k={args.n_topics} for axis projection…")
+        print(f"  Running NMF with k={args.n_topics}…")
         res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
         vocab = list(matrices["tf_names"])
     doctopic = res["doctopic"]
     topicwords = res["topicwords"]
     n_topics = topicwords.shape[0]
 
-    # Parse axis specs
+    # 2. Parse axes
     axis_specs = [args.axis_x]
     axis_labels_user = [args.axis_x_label]
     if args.axis_y:
@@ -1072,51 +1111,43 @@ def _action_axis_projection(args, matrices, labels,
 
     print(f"  {len(axes)} axes defined:")
     for j, (left, right) in enumerate(axes):
-        axis_letter = "XYZ"[j]
-        print(f"    {axis_letter}: left={left}  right={right}")
+        print(f"    {'XYZ'[j]}: left={left}  right={right}")
 
-    # Compute endpoint words for each axis (used for plot annotation
-    # and for auto-generating axis labels)
+    # 3. Compute endpoint words and resolve axis titles
     endpoint_words = []
     n_endpoint = int(getattr(args, "axis_endpoint_words", 5))
     for left, right in axes:
         ew = mta.axis_endpoint_words(
             topicwords, vocab, left, right,
-            top_n=max(10, n_endpoint),
+            top_n=max(15, n_endpoint),
         )
         endpoint_words.append(ew)
 
-    # Build axis labels: user-provided, else auto from pole words
     axis_titles = []
     for j, (left, right) in enumerate(axes):
         if axis_labels_user[j]:
             axis_titles.append(axis_labels_user[j])
         else:
-            left_lbl = _axis_label_from_words(
-                endpoint_words[j].get("left", []))
-            right_lbl = _axis_label_from_words(
-                endpoint_words[j].get("right", []))
-            if left_lbl and right_lbl:
-                title = f"{left_lbl} ↔ {right_lbl}"
-            elif right_lbl:
-                title = f"→ {right_lbl}"
-            elif left_lbl:
-                title = f"→ {left_lbl}"
+            l = _axis_label_from_words(endpoint_words[j].get("left", []))
+            r = _axis_label_from_words(endpoint_words[j].get("right", []))
+            if l and r:
+                axis_titles.append(f"{l} ↔ {r}")
+            elif r:
+                axis_titles.append(f"→ {r}")
+            elif l:
+                axis_titles.append(f"→ {l}")
             else:
-                title = f"Axis {'XYZ'[j]}"
-            axis_titles.append(title)
+                axis_titles.append(f"Axis {'XYZ'[j]}")
 
-    # Project
+    # 4. Project documents
     coords = mta.project_documents_on_axes(doctopic, axes)
 
-    # Save coords as CSV/JSON
-    coord_cols = [f"axis_{'XYZ'[j].lower()}" for j in range(len(axes))]
-    df_coords = pd.DataFrame(coords, columns=coord_cols)
-    df_coords.insert(0, "document", labels)
-    save_dataframe(df_coords, f"axis_projection_{method}_coords",
-                   output_dir, csv_json_formats)
+    # ------------------------------------------------------------------
+    # PART A — PROJECTION (visual)
+    # ------------------------------------------------------------------
+    print("\n  ── Projection ──")
 
-    # Color values
+    # Color values for the scatter
     color_by = getattr(args, "axis_color_by", "dominant-topic")
     color_values = None
     color_label = "Group"
@@ -1130,37 +1161,35 @@ def _action_axis_projection(args, matrices, labels,
         color_values = [topic_names_short[k] for k in dom]
         color_label = "Dominant topic"
     elif color_by == "group":
-        # Derive groups from filenames using same logic as compare-groups
         try:
             groups, skipped = mta.extract_groups_from_filenames(
-                labels,
-                position=int(args.group_position),
+                labels, position=int(args.group_position),
                 separator=args.group_separator,
             )
             if skipped:
-                print(f"  ⚠ {len(skipped)} file(s) have no part at "
-                      f"position {args.group_position}: "
-                      f"{', '.join(skipped[:5])}"
-                      + (f" (and {len(skipped)-5} more)"
-                         if len(skipped) > 5 else ""))
+                print(f"  ⚠ {len(skipped)} file(s) skipped at "
+                      f"position {args.group_position}")
             if groups:
                 color_values = [groups.get(fn, "(no group)")
                                 for fn in labels]
                 color_label = f"Group at position {args.group_position}"
             else:
-                print(f"  ⚠ No groups derived — falling back to "
-                      f"dominant-topic.")
+                print("  ⚠ No groups for coloring — "
+                      "using dominant topic")
                 dom = np.argmax(doctopic, axis=1)
                 color_values = [f"T{k+1}" for k in dom]
                 color_label = "Dominant topic"
         except Exception as e:
-            print(f"  ⚠ Could not derive groups, falling back to "
-                  f"dominant-topic ({e})")
-            color_by = "dominant-topic"
-            dom = np.argmax(doctopic, axis=1)
-            color_values = [f"T{k+1}" for k in dom]
+            print(f"  ⚠ Could not derive groups for coloring: {e}")
 
-    # Plot
+    # Save coords (small file, useful for quick inspection)
+    coord_cols = [f"axis_{'XYZ'[j].lower()}" for j in range(len(axes))]
+    df_coords = pd.DataFrame(coords, columns=coord_cols)
+    df_coords.insert(0, "document", labels)
+    save_dataframe(df_coords, f"axis_projection_{method}_coords",
+                   output_dir, csv_json_formats)
+
+    # Project plot
     print(f"  Rendering axis projection ({len(axes)}D)…")
     fig = mta.plot_axis_projection(
         coords=coords,
@@ -1176,7 +1205,136 @@ def _action_axis_projection(args, matrices, labels,
         save_figure(fig, f"axis_projection_{method}",
                     output_dir, plot_formats)
         plt.close(fig)
-    print(f"  ✓ Axis projection complete")
+    print(f"  ✓ Projection done")
+
+    # ------------------------------------------------------------------
+    # PART B — STATISTICS (enriched export + ANOVA + boxplots)
+    # ------------------------------------------------------------------
+    print("\n  ── Statistics ──")
+
+    # Group factor for ANOVA. Defaults to --group-position (same as
+    # compare-groups), can be overridden with --axis-stats-group-position.
+    stats_position = getattr(args, "axis_stats_group_position", None)
+    if stats_position is None:
+        stats_position = int(args.group_position)
+    sep = args.group_separator
+
+    metadata = {}
+    groups = {}
+    try:
+        groups, skipped = mta.extract_groups_from_filenames(
+            labels, position=stats_position, separator=sep,
+        )
+        if skipped:
+            print(f"  ⚠ {len(skipped)} file(s) have no part at "
+                  f"position {stats_position}: {', '.join(skipped[:5])}"
+                  + (f" (and {len(skipped)-5} more)"
+                     if len(skipped) > 5 else ""))
+        if groups:
+            metadata[f"group_pos{stats_position}"] = groups
+        else:
+            print("  ⚠ No groups derived — ANOVA will be skipped.")
+    except Exception as e:
+        print(f"  ⚠ Could not extract groups: {e}")
+        groups = {}
+
+    # Enriched export (always saved, even without ANOVA)
+    df_export = mta.build_axis_export_dataframe(
+        labels=labels, coords=coords,
+        axis_titles=axis_titles,
+        doctopic=doctopic, topicwords=topicwords, vocab=vocab,
+        metadata=metadata,
+    )
+    save_dataframe(df_export, f"axis_export_{method}",
+                   output_dir, csv_json_formats)
+    print(f"  ✓ Enriched export saved "
+          f"({df_export.shape[0]} rows × "
+          f"{df_export.shape[1]} columns)")
+
+    # ANOVA, if we have groups
+    if not groups:
+        print("  → ANOVA skipped (no group factor)")
+        print(f"\n  ✓ Axis analysis complete (projection only)")
+        return
+
+    group_aligned = [groups.get(fn, "") for fn in labels]
+    min_size = int(getattr(args, "axis_stats_min_group_size", 3))
+
+    summary_rows, welch_rows, tukey_rows, group_summary_rows = [], [], [], []
+    for j, letter in enumerate("XYZ"[:len(axes)]):
+        print(f"\n  ANOVA on axis {letter} — {axis_titles[j]}")
+        result = mta.axis_anova_one_way(
+            coord_values=coords[:, j],
+            group_labels=group_aligned,
+            min_group_size=min_size,
+        )
+        if "error" in result:
+            print(f"    ⚠ {result['error']}")
+            continue
+        clas = result["classical_anova"]
+        welch = result["welch_anova"]
+        print(f"    {result['n_groups_used']} groups, "
+              f"{len(result['dropped_groups'])} dropped")
+        print(f"    Classical F = {clas['F']:.3f}  "
+              f"p = {clas['p_value']:.4g}  "
+              f"η² = {clas['eta_squared']:.3f}")
+        print(f"    Welch F     = {welch['F']:.3f}  "
+              f"p = {welch['p_value']:.4g}")
+
+        summary_rows.append({
+            "axis": letter, "axis_title": axis_titles[j],
+            "n_groups": result["n_groups_used"],
+            "n_dropped": len(result["dropped_groups"]),
+            "F_classical": clas["F"], "df_num_classical": clas["df_num"],
+            "df_den_classical": clas["df_den"],
+            "p_classical": clas["p_value"],
+            "eta_squared": clas["eta_squared"],
+            "F_welch": welch["F"], "df_num_welch": welch["df_num"],
+            "df_den_welch": welch["df_den"], "p_welch": welch["p_value"],
+        })
+        for src, dst in [("welch_pairwise", welch_rows),
+                          ("tukey_pairwise", tukey_rows),
+                          ("group_summary", group_summary_rows)]:
+            df = result[src].copy()
+            if not df.empty:
+                df.insert(0, "axis", letter)
+                dst.append(df)
+
+    if summary_rows:
+        save_dataframe(pd.DataFrame(summary_rows),
+                       f"axis_anova_summary_{method}",
+                       output_dir, csv_json_formats)
+    if welch_rows:
+        save_dataframe(pd.concat(welch_rows, ignore_index=True),
+                       f"axis_anova_welch_pairwise_{method}",
+                       output_dir, csv_json_formats)
+    if tukey_rows:
+        save_dataframe(pd.concat(tukey_rows, ignore_index=True),
+                       f"axis_anova_tukey_pairwise_{method}",
+                       output_dir, csv_json_formats)
+    if group_summary_rows:
+        save_dataframe(pd.concat(group_summary_rows, ignore_index=True),
+                       f"axis_anova_group_summary_{method}",
+                       output_dir, csv_json_formats)
+
+    # Boxplots
+    fig = mta.plot_axis_anova_boxplots(
+        axis_values={"XYZ"[j]: coords[:, j] for j in range(len(axes))},
+        group_labels=group_aligned,
+        axis_titles={"XYZ"[j]: axis_titles[j] for j in range(len(axes))},
+        title=f"ANOVA: axis coordinates by group at position "
+              f"{stats_position} ({method.upper()}, K={n_topics})",
+        min_group_size=min_size,
+    )
+    if fig is not None:
+        save_figure(fig, f"axis_anova_boxplots_{method}",
+                    output_dir, plot_formats)
+        plt.close(fig)
+
+    print(f"\n  ✓ Axis analysis complete "
+          f"({len(summary_rows)} axes analyzed)")
+
+
 
 
 # =============================================================================
@@ -1208,8 +1366,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--action",
                    choices=["nmf", "lda", "evolution", "word-weights",
                             "semantic", "compare-groups", "network",
-                            "axis-projection", "all"],
-                   help="Which analysis to run (required in batch mode).")
+                            "axis-analysis",
+                            # Aliases kept for backward compatibility
+                            # (3.2/3.3 → 3.4 transition). They run the
+                            # same axis-analysis action and emit a
+                            # deprecation notice on stderr.
+                            "axis-projection", "axis-stats",
+                            "all"],
+                   help="Which analysis to run (required in batch mode). "
+                        "'axis-projection' and 'axis-stats' are kept as "
+                        "deprecated aliases of 'axis-analysis'.")
     p.add_argument("--n-topics", type=int, default=5,
                    help="Number of topics for NMF/LDA (default: 5).")
     p.add_argument("--max-topics", type=int, default=None,
@@ -1311,6 +1477,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--axis-endpoint-words", type=int, default=5,
                    help="Number of characteristic words shown at each "
                         "axis extremity (default: 5).")
+    # Axis-stats action
+    p.add_argument("--axis-stats-group-position", type=int, default=None,
+                   help="For --action axis-stats: position of the group "
+                        "code in the filename, 1-indexed. Defaults to "
+                        "--group-position (same as compare-groups). "
+                        "Use this to test the ANOVA against a different "
+                        "factor than the one used for plot coloring.")
+    p.add_argument("--axis-stats-min-group-size", type=int, default=3,
+                   help="For --action axis-stats: minimum group size; "
+                        "groups smaller than this are dropped (default: 3).")
     return p
 
 
@@ -1391,7 +1567,7 @@ def run_interactive() -> int:
         print("  4. Semantic context (similar words + 2D cloud)")
         print("  5. Group comparison (significance tests)")
         print("  6. Network views (topic↔doc, topic↔words, combined)")
-        print("  7. Axis projection (user-defined semantic axes)")
+        print("  7. Axis analysis (projection + ANOVA on user-defined axes)")
         print("  0. Quit")
         print()
         choice = input("Your choice [0-7]: ").strip()
@@ -1855,7 +2031,15 @@ def _interactive_menu_6(session):
 
 
 def _interactive_menu_7(session):
-    """Menu 7 — Axis projection (user-defined semantic axes)."""
+    """
+    Menu 7 — Axis analysis (projection + statistics, unified).
+
+    Asks the user for 1–3 axes (oppositions between topic pools),
+    then for an analysis mode: projection only (visual scatter),
+    statistics only (enriched CSV + ANOVA), or both. The two parts share
+    the same axis definition — no need to redefine the axes between
+    them.
+    """
     if session["nmf"] is None and session["lda"] is None:
         print("  ✗ Run NMF and/or LDA first (menu 1).")
         return
@@ -1886,19 +2070,15 @@ def _interactive_menu_7(session):
         top_words = ", ".join(vocab[i] for i in top_idx)
         print(f"    {k}: {top_words}")
 
-    print("\n  Define axes as opposition between two pools of topics.")
-    print("  Format: \"LEFT / RIGHT\" where each side is a "
-          "comma-separated list of topic indices.")
-    print("  Example: \"0,1 / 2,3\" — topics {0,1} vs {2,3}")
-    print("  Either pole may be empty: \"/ 2,3\" or \"0,1 /\"")
-    print()
+    print("\n  Define axes as oppositions between pools of topics.")
+    print("  Format: \"LEFT / RIGHT\"; example: \"0,1 / 2,3\"; "
+          "either pole may be empty.")
 
     # Collect axis specs
     axes = []
     axis_titles = []
     for j, name in enumerate(["X", "Y", "Z"]):
-        prompt = f"  Axis {name} (empty to stop): "
-        spec = input(prompt).strip()
+        spec = input(f"\n  Axis {name} (empty to stop): ").strip()
         if not spec:
             break
         try:
@@ -1907,7 +2087,6 @@ def _interactive_menu_7(session):
             print(f"    ✗ {e}")
             return
         axes.append(axis)
-        # Optional custom label
         custom = input(f"    Custom label for axis {name} "
                        "(empty for auto): ").strip()
         axis_titles.append(custom if custom else None)
@@ -1916,17 +2095,14 @@ def _interactive_menu_7(session):
         print("  ✗ No axes defined, aborting.")
         return
 
-    # Endpoint words
+    # Endpoint words + auto-fill titles
     endpoint_words = []
-    for left, right in axes:
+    for j, (left, right) in enumerate(axes):
         ew = mta.axis_endpoint_words(topicwords, vocab, left, right, top_n=15)
         endpoint_words.append(ew)
-
-    # Auto-fill missing titles
-    for j, (left, right) in enumerate(axes):
         if axis_titles[j] is None:
-            left_words = [w for w, _ in endpoint_words[j].get("left", [])[:3]]
-            right_words = [w for w, _ in endpoint_words[j].get("right", [])[:3]]
+            left_words = [w for w, _ in ew.get("left", [])[:3]]
+            right_words = [w for w, _ in ew.get("right", [])[:3]]
             l = "/".join(left_words) if left_words else ""
             r = "/".join(right_words) if right_words else ""
             if l and r:
@@ -1938,72 +2114,200 @@ def _interactive_menu_7(session):
             else:
                 axis_titles[j] = f"Axis {'XYZ'[j]}"
 
-    # Coloring choice
-    color_choice = input("  Color dots by: (1) dominant topic, "
-                         "(2) group from filename, (3) none [1]: "
-                         ).strip() or "1"
-    color_values = None
-    color_label = "Group"
-    if color_choice == "1":
-        dom = np.argmax(doctopic, axis=1)
-        names = []
-        for k in range(n_topics):
-            top_idx = np.argsort(topicwords[k])[::-1][:2]
-            names.append(f"T{k+1}: " + "/".join(vocab[i] for i in top_idx))
-        color_values = [names[k] for k in dom]
-        color_label = "Dominant topic"
-    elif color_choice == "2":
-        try:
-            pos = int(input("  Group position in filename [2]: ").strip() or "2")
-            sep = input("  Separator [_]: ").strip() or "_"
-            groups, skipped = mta.extract_groups_from_filenames(
-                session["labels"], position=pos, separator=sep)
-            if skipped:
-                print(f"  ⚠ {len(skipped)} file(s) have no part at "
-                      f"position {pos}: {', '.join(skipped[:3])}"
-                      + (f" (and {len(skipped)-3} more)"
-                         if len(skipped) > 3 else ""))
-            if groups:
-                color_values = [groups.get(fn, "(no group)")
-                                for fn in session["labels"]]
-                color_label = f"Group at position {pos}"
-            else:
-                print("  ⚠ No groups derived, using dominant topic")
-                dom = np.argmax(doctopic, axis=1)
-                color_values = [f"T{k+1}" for k in dom]
-                color_label = "Dominant topic"
-        except Exception as e:
-            print(f"  ⚠ Could not derive groups: {e}, using dominant topic")
-            dom = np.argmax(doctopic, axis=1)
-            color_values = [f"T{k+1}" for k in dom]
-
-    # Project + plot
+    # Project documents (needed for both projection and stats)
     coords = mta.project_documents_on_axes(doctopic, axes)
     out = session["output_dir"]
 
-    # Save coords
-    coord_cols = [f"axis_{'xyz'[j]}" for j in range(len(axes))]
-    df_coords = pd.DataFrame(coords, columns=coord_cols)
-    df_coords.insert(0, "document", session["labels"])
-    save_dataframe(df_coords, f"axis_projection_{method}_coords",
-                   out, {"csv", "json"})
+    # Ask the user what they want to do with the axes
+    print("\n  What do you want to produce?")
+    print("    1. Projection only (visual scatter + PDF/PNG)")
+    print("    2. Statistics only (enriched CSV export + ANOVA + boxplots)")
+    print("    3. Both (recommended)")
+    mode_choice = input("  Your choice [3]: ").strip() or "3"
+    do_projection = mode_choice in ("1", "3")
+    do_statistics = mode_choice in ("2", "3")
 
-    fig = mta.plot_axis_projection(
-        coords=coords,
-        labels=session["labels"],
-        axis_titles=axis_titles,
-        color_values=color_values,
-        color_label=color_label,
-        endpoint_words=endpoint_words,
-        n_top_endpoint_words=5,
-        title=f"Axis projection ({method.upper()}, K={n_topics})",
-    )
-    if fig is not None:
-        save_figure(fig, f"axis_projection_{method}",
-                    out, {"pdf", "png"})
-        plt.close(fig)
+    # ------------------------------------------------------------------
+    # PROJECTION
+    # ------------------------------------------------------------------
+    if do_projection:
+        print("\n  ── Projection ──")
 
-    print(f"  ✓ Axis projection saved (PDF + PNG + CSV/JSON)")
+        # Coloring choice (only for the projection)
+        color_choice = input(
+            "  Color dots by: (1) dominant topic, "
+            "(2) group from filename, (3) none [1]: "
+        ).strip() or "1"
+        color_values = None
+        color_label = "Group"
+        if color_choice == "1":
+            dom = np.argmax(doctopic, axis=1)
+            names = []
+            for k in range(n_topics):
+                top_idx = np.argsort(topicwords[k])[::-1][:2]
+                names.append(f"T{k+1}: " + "/".join(vocab[i] for i in top_idx))
+            color_values = [names[k] for k in dom]
+            color_label = "Dominant topic"
+        elif color_choice == "2":
+            try:
+                pos = int(input("  Group position in filename [2]: ").strip() or "2")
+                sep = input("  Separator [_]: ").strip() or "_"
+                groups, skipped = mta.extract_groups_from_filenames(
+                    session["labels"], position=pos, separator=sep)
+                if skipped:
+                    print(f"  ⚠ {len(skipped)} file(s) skipped")
+                if groups:
+                    color_values = [groups.get(fn, "(no group)")
+                                    for fn in session["labels"]]
+                    color_label = f"Group at position {pos}"
+                else:
+                    print("  ⚠ No groups derived, using dominant topic")
+                    dom = np.argmax(doctopic, axis=1)
+                    color_values = [f"T{k+1}" for k in dom]
+                    color_label = "Dominant topic"
+            except Exception as e:
+                print(f"  ⚠ Could not derive groups: {e}")
+
+        # Save coords
+        coord_cols = [f"axis_{'xyz'[j]}" for j in range(len(axes))]
+        df_coords = pd.DataFrame(coords, columns=coord_cols)
+        df_coords.insert(0, "document", session["labels"])
+        save_dataframe(df_coords, f"axis_projection_{method}_coords",
+                       out, {"csv", "json"})
+
+        fig = mta.plot_axis_projection(
+            coords=coords,
+            labels=session["labels"],
+            axis_titles=axis_titles,
+            color_values=color_values,
+            color_label=color_label,
+            endpoint_words=endpoint_words,
+            n_top_endpoint_words=5,
+            title=f"Axis projection ({method.upper()}, K={n_topics})",
+        )
+        if fig is not None:
+            save_figure(fig, f"axis_projection_{method}",
+                        out, {"pdf", "png"})
+            plt.close(fig)
+        print(f"  ✓ Projection saved (PDF + PNG + CSV/JSON)")
+
+    # ------------------------------------------------------------------
+    # STATISTICS
+    # ------------------------------------------------------------------
+    if do_statistics:
+        print("\n  ── Statistics ──")
+        try:
+            pos = int(input("  Group position in filename "
+                            "(for ANOVA factor) [2]: ").strip() or "2")
+            sep = input("  Separator [_]: ").strip() or "_"
+            min_size = int(input("  Minimum group size [3]: ").strip() or "3")
+        except ValueError:
+            pos, sep, min_size = 2, "_", 3
+
+        metadata = {}
+        groups = {}
+        try:
+            groups, skipped = mta.extract_groups_from_filenames(
+                session["labels"], position=pos, separator=sep,
+            )
+            if skipped:
+                print(f"  ⚠ {len(skipped)} file(s) skipped: "
+                      f"{', '.join(skipped[:3])}"
+                      + (f" (and {len(skipped)-3} more)"
+                         if len(skipped) > 3 else ""))
+            if groups:
+                metadata[f"group_pos{pos}"] = groups
+        except Exception as e:
+            print(f"  ⚠ Could not extract groups: {e}")
+            groups = {}
+
+        # Enriched export
+        df_export = mta.build_axis_export_dataframe(
+            labels=session["labels"], coords=coords,
+            axis_titles=axis_titles,
+            doctopic=doctopic, topicwords=topicwords, vocab=vocab,
+            metadata=metadata,
+        )
+        save_dataframe(df_export, f"axis_export_{method}",
+                       out, {"csv", "json"})
+        print(f"  ✓ Enriched export: {df_export.shape[0]} rows × "
+              f"{df_export.shape[1]} cols (CSV + JSON)")
+
+        if not groups:
+            print("  → ANOVA skipped (no groups derived).")
+        else:
+            group_aligned = [groups.get(fn, "") for fn in session["labels"]]
+
+            summary_rows, welch_rows, tukey_rows, group_summary_rows = [], [], [], []
+            for j, letter in enumerate("XYZ"[:len(axes)]):
+                print(f"\n  ANOVA on axis {letter} — {axis_titles[j]}")
+                result = mta.axis_anova_one_way(
+                    coord_values=coords[:, j],
+                    group_labels=group_aligned,
+                    min_group_size=min_size,
+                )
+                if "error" in result:
+                    print(f"    ⚠ {result['error']}")
+                    continue
+                clas = result["classical_anova"]
+                welch = result["welch_anova"]
+                print(f"    {result['n_groups_used']} groups, "
+                      f"{len(result['dropped_groups'])} dropped")
+                print(f"    Classical F = {clas['F']:.3f}  "
+                      f"p = {clas['p_value']:.4g}  "
+                      f"η² = {clas['eta_squared']:.3f}")
+                print(f"    Welch F     = {welch['F']:.3f}  "
+                      f"p = {welch['p_value']:.4g}")
+                summary_rows.append({
+                    "axis": letter, "axis_title": axis_titles[j],
+                    "n_groups": result["n_groups_used"],
+                    "n_dropped": len(result["dropped_groups"]),
+                    "F_classical": clas["F"], "df_num_classical": clas["df_num"],
+                    "df_den_classical": clas["df_den"],
+                    "p_classical": clas["p_value"],
+                    "eta_squared": clas["eta_squared"],
+                    "F_welch": welch["F"], "df_num_welch": welch["df_num"],
+                    "df_den_welch": welch["df_den"], "p_welch": welch["p_value"],
+                })
+                for src, dst in [("welch_pairwise", welch_rows),
+                                  ("tukey_pairwise", tukey_rows),
+                                  ("group_summary", group_summary_rows)]:
+                    df = result[src].copy()
+                    if not df.empty:
+                        df.insert(0, "axis", letter)
+                        dst.append(df)
+
+            if summary_rows:
+                save_dataframe(pd.DataFrame(summary_rows),
+                               f"axis_anova_summary_{method}",
+                               out, {"csv", "json"})
+            if welch_rows:
+                save_dataframe(pd.concat(welch_rows, ignore_index=True),
+                               f"axis_anova_welch_pairwise_{method}",
+                               out, {"csv", "json"})
+            if tukey_rows:
+                save_dataframe(pd.concat(tukey_rows, ignore_index=True),
+                               f"axis_anova_tukey_pairwise_{method}",
+                               out, {"csv", "json"})
+            if group_summary_rows:
+                save_dataframe(pd.concat(group_summary_rows, ignore_index=True),
+                               f"axis_anova_group_summary_{method}",
+                               out, {"csv", "json"})
+
+            fig = mta.plot_axis_anova_boxplots(
+                axis_values={"XYZ"[j]: coords[:, j] for j in range(len(axes))},
+                group_labels=group_aligned,
+                axis_titles={"XYZ"[j]: axis_titles[j] for j in range(len(axes))},
+                title=f"ANOVA by group at position {pos} ({method.upper()})",
+                min_group_size=min_size,
+            )
+            if fig is not None:
+                save_figure(fig, f"axis_anova_boxplots_{method}",
+                            out, {"pdf", "png"})
+                plt.close(fig)
+            print(f"\n  ✓ Statistics complete "
+                  f"({len(summary_rows)} axes analyzed)")
+
 
 
 # =============================================================================

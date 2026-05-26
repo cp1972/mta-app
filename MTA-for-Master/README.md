@@ -122,30 +122,135 @@ Each graph can be downloaded as PNG (for slides and Word documents)
 or PDF (vector, for publication). The CLI batch mode produces the
 same three figures via `--action network`.
 
-## The Axis projection page
+## The Axis analysis page
 
-After running NMF or LDA, the **🎯 Axis projection** page lets you
+After running NMF or LDA, the **🎯 Axis analysis** page lets you
 project documents onto 1, 2 or 3 *semantic axes that you define
-yourself*. Each axis is an opposition between two pools of topics:
-the left pole pulls documents in the negative direction, the right
-pole in the positive direction. Documents weighted on both sides
-land near zero; documents leaning strongly toward one side land at
-the corresponding extremity.
+yourself*, and either explore them visually or test them statistically
+— all on a single page. Each axis is an opposition between two pools
+of topics: the left pole pulls documents in the negative direction,
+the right pole in the positive direction. Documents weighted on both
+sides land near zero; documents leaning strongly toward one side land
+at the corresponding extremity.
 
 Unlike an automatic PCA (which picks directions of maximum variance,
-often hard to interpret), axis projection produces axes that are
+often hard to interpret), axis analysis produces axes that are
 *interpretable by design* — they encode hypotheses you bring to the
 corpus. This is the spirit of Bourdieu's correspondence analysis and
 of Slapin & Proksch's text scaling (Wordfish / Wordscores).
 
-For each axis, you can choose what to display at its extremities
-(top words from the topics in that pole, or just the topic names),
-and you can color documents by their dominant topic, by a group
-derived from the filename (e.g. by year, gender, source), or leave
-them uncolored. The interactive Altair chart supports zoom, pan and
-hover; a matplotlib version is available for PDF/PNG export. The CLI
-batch equivalent is `--action axis-projection --axis-x "0,1 / 2,3"
---axis-y "..."` (etc.).
+You define your axes once in the page header, then choose what to do
+with them via two tabs.
+
+### Tab 1 — Projection (visual)
+
+This tab shows your documents as a scatter plot in axis space. For
+each axis, you can choose what to display at its extremities (top
+words from the topics in that pole, or just the topic names, or
+both), and you can color documents by their dominant topic, by a
+group derived from the filename (e.g. by year, gender, source), or
+leave them uncolored. The interactive Altair chart supports zoom,
+pan and hover; a matplotlib version is available for PDF/PNG export.
+
+### Tab 2 — Statistics (ANOVA + enriched export)
+
+This tab tests *statistically* whether documents from different
+groups (extracted from the filenames, e.g. *rural* vs *urban*, *F*
+vs *M*, year, source) have significantly different positions on each
+axis. You pick the group factor (which position in the filename to
+read after splitting by an underscore), and the page produces two
+things.
+
+**An enriched export.** A single CSV combining: the document filename,
+the group code, the coordinates on each axis you defined (with
+sanitized column names like `axis_x_kritik_vs_innovation`), the
+dominant topic and its weight, and all *K* topic weights. This CSV is
+designed to load cleanly into Stata, R, SPSS or Excel for any further
+analysis you want to run.
+
+**A one-way ANOVA on each axis.** For every axis, the page reports:
+
+- a classical F-test with Tukey HSD post-hoc (the textbook reference),
+- a Welch F-test with pairwise Welch t-tests corrected for multiple
+  comparisons via Benjamini-Hochberg (robust to unequal variances),
+- the effect size η² (proportion of variance in the axis coordinates
+  explained by the group factor),
+- a boxplot per group, one subplot per axis.
+
+When the two tests **converge** (both significant or both not), the
+conclusion is robust. When they **diverge**, the boxplots will usually
+show that box widths differ strongly between groups — variance
+heterogeneity is at play, and the Welch result is more trustworthy.
+A coloured banner in the page makes this explicit for each axis.
+
+### CLI batch equivalent
+
+The CLI batch equivalent is one single action:
+
+```bash
+python MTA_v3.py --corpus my_corpus --stopwords stop.txt \
+    --action axis-analysis --n-topics 8 \
+    --axis-x "0,1 / 4,5" --axis-x-label "Tradition ↔ Innovation" \
+    --axis-y "2 / 6,7" \
+    --group-position 2 \
+    --output results/
+```
+
+This produces the projection figure (PDF + PNG), the projection
+coordinates (CSV + JSON), the enriched export (CSV + JSON), the four
+ANOVA tables (CSV + JSON), and the boxplots (PDF + PNG) in a single
+pass — the topic model is fit only once.
+
+(The old `--action axis-projection` and `--action axis-stats` are
+still accepted as deprecated aliases for backward compatibility.)
+
+### From MTA to Stata or R: a worked example
+
+The enriched export turns the axis coordinates into ordinary continuous
+variables that you can plug into any statistical model. Two short
+examples on the same exported CSV.
+
+**In R**, suppose the CSV is `axis_export_nmf.csv`. To test whether
+the group factor *predicts* the position of documents on axis X with
+a classical linear model:
+
+```r
+df <- read.csv("axis_export_nmf.csv")
+fit <- lm(axis_x_kritik_vs_innovation ~ group_pos2, data = df)
+summary(fit)
+# or the same test as the ANOVA in MTA:
+anova(fit)
+# Tukey post-hoc:
+TukeyHSD(aov(fit))
+```
+
+You can equally use the axis as a *predictor*, for example to test
+whether a document's position on axis X explains its dominant-topic
+weight:
+
+```r
+fit2 <- lm(dominant_weight ~ axis_x_kritik_vs_innovation + group_pos2,
+           data = df)
+summary(fit2)
+```
+
+**In Stata**, the same logic with the same CSV (load it with
+`import delimited`):
+
+```stata
+import delimited "axis_export_nmf.csv", clear
+regress axis_x_kritik_vs_innovation i.group_pos2
+* or the one-way ANOVA version:
+oneway axis_x_kritik_vs_innovation group_pos2, tabulate
+* a regression using the axis as a predictor:
+regress dominant_weight axis_x_kritik_vs_innovation i.group_pos2
+```
+
+This is the methodological bridge that the third lecture session
+discusses (*Erwartung 1*): the topic-modelling output, once projected
+onto interpretable axes, becomes a quantitative input for any standard
+inferential analysis — without abolishing the qualitative work of
+interpretation, which the axis definitions themselves embody.
 
 ## Working with your own data
 
