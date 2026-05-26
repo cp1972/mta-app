@@ -122,6 +122,31 @@ Each graph can be downloaded as PNG (for slides and Word documents)
 or PDF (vector, for publication). The CLI batch mode produces the
 same three figures via `--action network`.
 
+## The Axis projection page
+
+After running NMF or LDA, the **🎯 Axis projection** page lets you
+project documents onto 1, 2 or 3 *semantic axes that you define
+yourself*. Each axis is an opposition between two pools of topics:
+the left pole pulls documents in the negative direction, the right
+pole in the positive direction. Documents weighted on both sides
+land near zero; documents leaning strongly toward one side land at
+the corresponding extremity.
+
+Unlike an automatic PCA (which picks directions of maximum variance,
+often hard to interpret), axis projection produces axes that are
+*interpretable by design* — they encode hypotheses you bring to the
+corpus. This is the spirit of Bourdieu's correspondence analysis and
+of Slapin & Proksch's text scaling (Wordfish / Wordscores).
+
+For each axis, you can choose what to display at its extremities
+(top words from the topics in that pole, or just the topic names),
+and you can color documents by their dominant topic, by a group
+derived from the filename (e.g. by year, gender, source), or leave
+them uncolored. The interactive Altair chart supports zoom, pan and
+hover; a matplotlib version is available for PDF/PNG export. The CLI
+batch equivalent is `--action axis-projection --axis-x "0,1 / 2,3"
+--axis-y "..."` (etc.).
+
 ## Working with your own data
 
 Your texts must be `.txt` files (plain text) encoded in UTF-8. If you

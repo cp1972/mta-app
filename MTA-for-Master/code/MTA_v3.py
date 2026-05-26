@@ -200,7 +200,10 @@ def run_batch(args: argparse.Namespace) -> int:
     save_dataframe(matrices["df_tfidf"], "tfidf_matrix",
                    output_dir, csv_json_formats)
 
-    # Dispatch to the requested action
+    # Dispatch to the requested action.
+    # Note: 'axis-projection' is NOT included in 'all' because it
+    # requires user-defined --axis-x (and optionally --axis-y, --axis-z)
+    # — there's no sensible default. It must be invoked explicitly.
     actions = (["nmf", "lda", "evolution", "word-weights", "semantic",
                 "compare-groups", "network"]
                if args.action == "all" else [args.action])
@@ -228,6 +231,10 @@ def run_batch(args: argparse.Namespace) -> int:
         elif action == "network":
             _action_network(args, matrices, labels,
                             output_dir, plot_formats)
+        elif action == "axis-projection":
+            _action_axis_projection(args, matrices, labels,
+                                     output_dir, csv_json_formats,
+                                     plot_formats)
         else:
             print(f"  ✗ Unknown action: {action}", file=sys.stderr)
             return 2
@@ -958,6 +965,220 @@ def _action_network(args, matrices, labels,
     print(f"  ✓ Network views complete")
 
 
+# -----------------------------------------------------------------------------
+# Axis projection — user-defined semantic axes on the doctopic matrix
+# -----------------------------------------------------------------------------
+
+def _parse_axis_spec(spec: str, n_topics: int) -> tuple:
+    """
+    Parse a CLI axis spec like "0,1 / 2,3" into (left_pole, right_pole).
+
+    Format: "L / R" where each side is a comma-separated list of
+    topic indices (0-based). Either side may be empty.
+
+    Raises ValueError on malformed input.
+    """
+    if "/" not in spec:
+        raise ValueError(
+            f"Axis spec {spec!r} must contain '/' separating left "
+            "and right poles. Example: '0,1 / 2,3'"
+        )
+    left_str, right_str = spec.split("/", 1)
+
+    def _to_list(s):
+        s = s.strip()
+        if not s:
+            return []
+        items = [x.strip() for x in s.split(",") if x.strip()]
+        try:
+            idx = [int(x) for x in items]
+        except ValueError:
+            raise ValueError(
+                f"Could not parse topic indices in {s!r}: "
+                "expected integers"
+            )
+        for k in idx:
+            if not (0 <= k < n_topics):
+                raise ValueError(
+                    f"Topic index {k} out of range [0, {n_topics - 1}]"
+                )
+        return idx
+
+    return _to_list(left_str), _to_list(right_str)
+
+
+def _axis_label_from_words(pole_words: list, max_chars: int = 25) -> str:
+    """Build a short axis label from the top words of a pole."""
+    if not pole_words:
+        return ""
+    words = [w for w, _ in pole_words[:3]]
+    label = "/".join(words)
+    if len(label) > max_chars:
+        label = label[:max_chars - 1] + "…"
+    return label
+
+
+def _action_axis_projection(args, matrices, labels,
+                             output_dir, csv_json_formats, plot_formats):
+    """
+    Project documents onto 1, 2 or 3 user-defined semantic axes.
+
+    Each axis is a contrast between two pools of topics — the axis
+    direction is a vector in topic space with +1/|R| on the right
+    pole, -1/|L| on the left pole, 0 elsewhere. Documents are then
+    projected by simple dot product. See `mta.axis_direction_vector`.
+    """
+    if not args.axis_x:
+        print("  ✗ --axis-x is required for axis-projection action",
+              file=sys.stderr)
+        print("    Example: --axis-x \"0,1 / 2,3\"", file=sys.stderr)
+        return
+
+    # Run the topic model
+    method = getattr(args, "axis_method", "nmf")
+    if method == "lda":
+        print(f"  Running LDA with k={args.n_topics} for axis projection…")
+        res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
+        vocab = list(matrices["lda_names"])
+    else:
+        print(f"  Running NMF with k={args.n_topics} for axis projection…")
+        res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+        vocab = list(matrices["tf_names"])
+    doctopic = res["doctopic"]
+    topicwords = res["topicwords"]
+    n_topics = topicwords.shape[0]
+
+    # Parse axis specs
+    axis_specs = [args.axis_x]
+    axis_labels_user = [args.axis_x_label]
+    if args.axis_y:
+        axis_specs.append(args.axis_y)
+        axis_labels_user.append(args.axis_y_label)
+    if args.axis_z:
+        if not args.axis_y:
+            print("  ✗ --axis-z requires --axis-y to be set first",
+                  file=sys.stderr)
+            return
+        axis_specs.append(args.axis_z)
+        axis_labels_user.append(args.axis_z_label)
+
+    axes = []
+    for spec in axis_specs:
+        try:
+            axes.append(_parse_axis_spec(spec, n_topics))
+        except ValueError as e:
+            print(f"  ✗ Axis spec error: {e}", file=sys.stderr)
+            return
+
+    print(f"  {len(axes)} axes defined:")
+    for j, (left, right) in enumerate(axes):
+        axis_letter = "XYZ"[j]
+        print(f"    {axis_letter}: left={left}  right={right}")
+
+    # Compute endpoint words for each axis (used for plot annotation
+    # and for auto-generating axis labels)
+    endpoint_words = []
+    n_endpoint = int(getattr(args, "axis_endpoint_words", 5))
+    for left, right in axes:
+        ew = mta.axis_endpoint_words(
+            topicwords, vocab, left, right,
+            top_n=max(10, n_endpoint),
+        )
+        endpoint_words.append(ew)
+
+    # Build axis labels: user-provided, else auto from pole words
+    axis_titles = []
+    for j, (left, right) in enumerate(axes):
+        if axis_labels_user[j]:
+            axis_titles.append(axis_labels_user[j])
+        else:
+            left_lbl = _axis_label_from_words(
+                endpoint_words[j].get("left", []))
+            right_lbl = _axis_label_from_words(
+                endpoint_words[j].get("right", []))
+            if left_lbl and right_lbl:
+                title = f"{left_lbl} ↔ {right_lbl}"
+            elif right_lbl:
+                title = f"→ {right_lbl}"
+            elif left_lbl:
+                title = f"→ {left_lbl}"
+            else:
+                title = f"Axis {'XYZ'[j]}"
+            axis_titles.append(title)
+
+    # Project
+    coords = mta.project_documents_on_axes(doctopic, axes)
+
+    # Save coords as CSV/JSON
+    coord_cols = [f"axis_{'XYZ'[j].lower()}" for j in range(len(axes))]
+    df_coords = pd.DataFrame(coords, columns=coord_cols)
+    df_coords.insert(0, "document", labels)
+    save_dataframe(df_coords, f"axis_projection_{method}_coords",
+                   output_dir, csv_json_formats)
+
+    # Color values
+    color_by = getattr(args, "axis_color_by", "dominant-topic")
+    color_values = None
+    color_label = "Group"
+    if color_by == "dominant-topic":
+        dom = np.argmax(doctopic, axis=1)
+        topic_names_short = []
+        for k in range(n_topics):
+            top_idx = np.argsort(topicwords[k])[::-1][:2]
+            topic_names_short.append(f"T{k+1}: " +
+                                     "/".join(vocab[i] for i in top_idx))
+        color_values = [topic_names_short[k] for k in dom]
+        color_label = "Dominant topic"
+    elif color_by == "group":
+        # Derive groups from filenames using same logic as compare-groups
+        try:
+            groups, skipped = mta.extract_groups_from_filenames(
+                labels,
+                position=int(args.group_position),
+                separator=args.group_separator,
+            )
+            if skipped:
+                print(f"  ⚠ {len(skipped)} file(s) have no part at "
+                      f"position {args.group_position}: "
+                      f"{', '.join(skipped[:5])}"
+                      + (f" (and {len(skipped)-5} more)"
+                         if len(skipped) > 5 else ""))
+            if groups:
+                color_values = [groups.get(fn, "(no group)")
+                                for fn in labels]
+                color_label = f"Group at position {args.group_position}"
+            else:
+                print(f"  ⚠ No groups derived — falling back to "
+                      f"dominant-topic.")
+                dom = np.argmax(doctopic, axis=1)
+                color_values = [f"T{k+1}" for k in dom]
+                color_label = "Dominant topic"
+        except Exception as e:
+            print(f"  ⚠ Could not derive groups, falling back to "
+                  f"dominant-topic ({e})")
+            color_by = "dominant-topic"
+            dom = np.argmax(doctopic, axis=1)
+            color_values = [f"T{k+1}" for k in dom]
+
+    # Plot
+    print(f"  Rendering axis projection ({len(axes)}D)…")
+    fig = mta.plot_axis_projection(
+        coords=coords,
+        labels=labels,
+        axis_titles=axis_titles,
+        color_values=color_values,
+        color_label=color_label,
+        endpoint_words=endpoint_words,
+        n_top_endpoint_words=n_endpoint,
+        title=f"Axis projection ({method.upper()}, K={n_topics})",
+    )
+    if fig is not None:
+        save_figure(fig, f"axis_projection_{method}",
+                    output_dir, plot_formats)
+        plt.close(fig)
+    print(f"  ✓ Axis projection complete")
+
+
 # =============================================================================
 # ARGUMENT PARSING
 # =============================================================================
@@ -986,7 +1207,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Also save tables as JSON (for Stata/R pipelines).")
     p.add_argument("--action",
                    choices=["nmf", "lda", "evolution", "word-weights",
-                            "semantic", "compare-groups", "network", "all"],
+                            "semantic", "compare-groups", "network",
+                            "axis-projection", "all"],
                    help="Which analysis to run (required in batch mode).")
     p.add_argument("--n-topics", type=int, default=5,
                    help="Number of topics for NMF/LDA (default: 5).")
@@ -1055,6 +1277,40 @@ def build_parser() -> argparse.ArgumentParser:
                    help="For --action network: amplify visual size "
                         "differences between topic nodes. Useful on "
                         "balanced corpora where masses are similar.")
+    # Axis-projection action
+    p.add_argument("--axis-method", choices=["nmf", "lda"], default="nmf",
+                   help="For --action axis-projection: which topic model "
+                        "to project documents from (default: nmf).")
+    p.add_argument("--axis-x", type=str, default=None,
+                   help="For --action axis-projection: definition of "
+                        "the X axis as `LEFT / RIGHT` where each side is "
+                        "a comma-separated list of topic indices "
+                        "(0-based). Example: \"0,1 / 2,3\" means "
+                        "axis X opposes topics {0,1} (negative pole) to "
+                        "topics {2,3} (positive pole). A pole may be "
+                        "empty, e.g. \"/ 2,3\".")
+    p.add_argument("--axis-y", type=str, default=None,
+                   help="Same syntax as --axis-x, for the Y axis "
+                        "(optional). If absent, plot is 1D.")
+    p.add_argument("--axis-z", type=str, default=None,
+                   help="Same syntax as --axis-x, for the Z axis "
+                        "(optional, 3D plot).")
+    p.add_argument("--axis-x-label", type=str, default=None,
+                   help="Display label for the X axis (default: "
+                        "auto-generated from the pole topic indices).")
+    p.add_argument("--axis-y-label", type=str, default=None,
+                   help="Display label for the Y axis.")
+    p.add_argument("--axis-z-label", type=str, default=None,
+                   help="Display label for the Z axis.")
+    p.add_argument("--axis-color-by",
+                   choices=["dominant-topic", "group", "none"],
+                   default="dominant-topic",
+                   help="How to color the document dots: by their "
+                        "dominant topic (default), by group (requires "
+                        "--groups-from), or no coloring.")
+    p.add_argument("--axis-endpoint-words", type=int, default=5,
+                   help="Number of characteristic words shown at each "
+                        "axis extremity (default: 5).")
     return p
 
 
@@ -1135,9 +1391,10 @@ def run_interactive() -> int:
         print("  4. Semantic context (similar words + 2D cloud)")
         print("  5. Group comparison (significance tests)")
         print("  6. Network views (topic↔doc, topic↔words, combined)")
+        print("  7. Axis projection (user-defined semantic axes)")
         print("  0. Quit")
         print()
-        choice = input("Your choice [0-6]: ").strip()
+        choice = input("Your choice [0-7]: ").strip()
 
         if choice == "0":
             print("\nGoodbye!")
@@ -1154,6 +1411,8 @@ def run_interactive() -> int:
             _interactive_menu_5(session)
         elif choice == "6":
             _interactive_menu_6(session)
+        elif choice == "7":
+            _interactive_menu_7(session)
         else:
             print(f"  ✗ Invalid choice: {choice!r}")
 
@@ -1593,6 +1852,158 @@ def _interactive_menu_6(session):
         plt.close(fig)
 
     print(f"  ✓ Network views saved (PDF + PNG)")
+
+
+def _interactive_menu_7(session):
+    """Menu 7 — Axis projection (user-defined semantic axes)."""
+    if session["nmf"] is None and session["lda"] is None:
+        print("  ✗ Run NMF and/or LDA first (menu 1).")
+        return
+
+    # Method choice
+    if session["nmf"] is not None and session["lda"] is not None:
+        method = input("  Use NMF or LDA? (nmf/lda) [nmf]: ").strip().lower() or "nmf"
+        if method not in ("nmf", "lda"):
+            method = "nmf"
+    elif session["nmf"] is not None:
+        method = "nmf"
+        print("  Using NMF (only model available).")
+    else:
+        method = "lda"
+        print("  Using LDA (only model available).")
+
+    res = session[method]
+    doctopic = res["doctopic"]
+    topicwords = res["topicwords"]
+    vocab = (session["matrices"]["tf_names"] if method == "nmf"
+             else session["matrices"]["lda_names"])
+    n_topics = topicwords.shape[0]
+
+    # Show topic summaries
+    print("\n  Available topics:")
+    for k in range(n_topics):
+        top_idx = np.argsort(topicwords[k])[::-1][:5]
+        top_words = ", ".join(vocab[i] for i in top_idx)
+        print(f"    {k}: {top_words}")
+
+    print("\n  Define axes as opposition between two pools of topics.")
+    print("  Format: \"LEFT / RIGHT\" where each side is a "
+          "comma-separated list of topic indices.")
+    print("  Example: \"0,1 / 2,3\" — topics {0,1} vs {2,3}")
+    print("  Either pole may be empty: \"/ 2,3\" or \"0,1 /\"")
+    print()
+
+    # Collect axis specs
+    axes = []
+    axis_titles = []
+    for j, name in enumerate(["X", "Y", "Z"]):
+        prompt = f"  Axis {name} (empty to stop): "
+        spec = input(prompt).strip()
+        if not spec:
+            break
+        try:
+            axis = _parse_axis_spec(spec, n_topics)
+        except ValueError as e:
+            print(f"    ✗ {e}")
+            return
+        axes.append(axis)
+        # Optional custom label
+        custom = input(f"    Custom label for axis {name} "
+                       "(empty for auto): ").strip()
+        axis_titles.append(custom if custom else None)
+
+    if not axes:
+        print("  ✗ No axes defined, aborting.")
+        return
+
+    # Endpoint words
+    endpoint_words = []
+    for left, right in axes:
+        ew = mta.axis_endpoint_words(topicwords, vocab, left, right, top_n=15)
+        endpoint_words.append(ew)
+
+    # Auto-fill missing titles
+    for j, (left, right) in enumerate(axes):
+        if axis_titles[j] is None:
+            left_words = [w for w, _ in endpoint_words[j].get("left", [])[:3]]
+            right_words = [w for w, _ in endpoint_words[j].get("right", [])[:3]]
+            l = "/".join(left_words) if left_words else ""
+            r = "/".join(right_words) if right_words else ""
+            if l and r:
+                axis_titles[j] = f"{l} ↔ {r}"
+            elif r:
+                axis_titles[j] = f"→ {r}"
+            elif l:
+                axis_titles[j] = f"→ {l}"
+            else:
+                axis_titles[j] = f"Axis {'XYZ'[j]}"
+
+    # Coloring choice
+    color_choice = input("  Color dots by: (1) dominant topic, "
+                         "(2) group from filename, (3) none [1]: "
+                         ).strip() or "1"
+    color_values = None
+    color_label = "Group"
+    if color_choice == "1":
+        dom = np.argmax(doctopic, axis=1)
+        names = []
+        for k in range(n_topics):
+            top_idx = np.argsort(topicwords[k])[::-1][:2]
+            names.append(f"T{k+1}: " + "/".join(vocab[i] for i in top_idx))
+        color_values = [names[k] for k in dom]
+        color_label = "Dominant topic"
+    elif color_choice == "2":
+        try:
+            pos = int(input("  Group position in filename [2]: ").strip() or "2")
+            sep = input("  Separator [_]: ").strip() or "_"
+            groups, skipped = mta.extract_groups_from_filenames(
+                session["labels"], position=pos, separator=sep)
+            if skipped:
+                print(f"  ⚠ {len(skipped)} file(s) have no part at "
+                      f"position {pos}: {', '.join(skipped[:3])}"
+                      + (f" (and {len(skipped)-3} more)"
+                         if len(skipped) > 3 else ""))
+            if groups:
+                color_values = [groups.get(fn, "(no group)")
+                                for fn in session["labels"]]
+                color_label = f"Group at position {pos}"
+            else:
+                print("  ⚠ No groups derived, using dominant topic")
+                dom = np.argmax(doctopic, axis=1)
+                color_values = [f"T{k+1}" for k in dom]
+                color_label = "Dominant topic"
+        except Exception as e:
+            print(f"  ⚠ Could not derive groups: {e}, using dominant topic")
+            dom = np.argmax(doctopic, axis=1)
+            color_values = [f"T{k+1}" for k in dom]
+
+    # Project + plot
+    coords = mta.project_documents_on_axes(doctopic, axes)
+    out = session["output_dir"]
+
+    # Save coords
+    coord_cols = [f"axis_{'xyz'[j]}" for j in range(len(axes))]
+    df_coords = pd.DataFrame(coords, columns=coord_cols)
+    df_coords.insert(0, "document", session["labels"])
+    save_dataframe(df_coords, f"axis_projection_{method}_coords",
+                   out, {"csv", "json"})
+
+    fig = mta.plot_axis_projection(
+        coords=coords,
+        labels=session["labels"],
+        axis_titles=axis_titles,
+        color_values=color_values,
+        color_label=color_label,
+        endpoint_words=endpoint_words,
+        n_top_endpoint_words=5,
+        title=f"Axis projection ({method.upper()}, K={n_topics})",
+    )
+    if fig is not None:
+        save_figure(fig, f"axis_projection_{method}",
+                    out, {"pdf", "png"})
+        plt.close(fig)
+
+    print(f"  ✓ Axis projection saved (PDF + PNG + CSV/JSON)")
 
 
 # =============================================================================

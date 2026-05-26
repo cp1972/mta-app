@@ -39,6 +39,7 @@ st.markdown(
     | 5 | **🧠 Semantic context** | Find similar words, visualise semantic clouds in 2D, select sub-corpora by keyword. |
     | 6 | **⚖️ Group comparison** | Test whether documents differ significantly between groups (e.g. F vs M, age bands…). |
     | 7 | **🕸 Network views** | Bipartite network graphs of topics, documents and top-words (publication-ready). |
+    | 8 | **🎯 Axis projection** | Project documents onto 1-3 user-defined semantic axes (oppositions between topic pools). |
 
     ### Tips
 

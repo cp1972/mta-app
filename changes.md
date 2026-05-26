@@ -1,5 +1,33 @@
 # Major changes in versions of MTA
 
+## MTA version 3.2 -- May 2026 -- Minor release
+
+Axis projection — user-defined semantic axes on the doctopic matrix — is added to all three interfaces (Streamlit, interactive CLI menu, batch mode). This is a new analytical tool, not just a visualization: it lets the researcher project documents onto 1, 2 or 3 axes that they define themselves as oppositions between pools of topics.
+
+### What's new
+
+  - **Three new functions in `mta_core.py`**: `axis_direction_vector(n_topics, left_pole, right_pole)` builds a normalized contrast vector ($+1/|R|$ on the right pole, $-1/|L|$ on the left pole, 0 elsewhere); `project_documents_on_axes(doctopic, axes)` projects documents onto 1, 2 or 3 user-defined axes; `axis_endpoint_words(topicwords, vocab, left_pole, right_pole, top_n)` aggregates topic-word weights to identify the most characteristic words at each axis extremity. Plus `plot_axis_projection(...)` for matplotlib-based 1D, 2D and 3D rendering.
+
+  - **Why this matters methodologically.** Automatic PCA on the doctopic matrix picks the directions of maximum variance — often hard to interpret. Axis projection inverts the logic: the researcher defines each axis as an opposition between two pools of topics, and the documents are projected onto these *interpretable-by-design* axes. This brings into MTA the spirit of Bourdieu's correspondence analysis (axes as oppositions, not as variance directions) and of Slapin & Proksch's text scaling (Wordfish/Wordscores). The same operation provides a methodological bridge between qualitative and quantitative work, in line with the third lecture session's argument: the resulting coordinates can be used as continuous variables in regression, clustering, or other quantitative analyses.
+
+  - **Streamlit page 8 — "Axis projection"** with: a topic browser to help the user pick informed poles, multi-select widgets for the left and right poles of axes X, Y, Z (1 to 3 axes), per-axis custom-label fields, a display-options panel (top words / topic names / both at extremities, dot coloring by dominant topic / group from filename / none), an Altair interactive view for 1D and 2D (zoom, pan, hover), a downloadable coordinates table (CSV), and a "Publication-ready export" expander that renders the same projection with matplotlib for PDF/PNG download.
+
+  - **Interactive CLI menu entry 7** — same projection from the terminal: shows the topic summaries, asks the user for axes 1–3 (one at a time, format `"LEFT / RIGHT"`), optional custom labels, color choice (dominant topic / group / none), then generates the matplotlib figure plus CSV/JSON.
+
+  - **Batch action `axis-projection`** for `MTA_v3.py`. New options: `--axis-method {nmf,lda}`, `--axis-x "0,1 / 2,3"`, `--axis-y "..."`, `--axis-z "..."`, `--axis-x-label`, `--axis-y-label`, `--axis-z-label`, `--axis-color-by {dominant-topic,group,none}`, `--axis-endpoint-words N`. The action is *not* included in `--action all` because it requires user-defined poles — there is no sensible default.
+
+### Internal changes
+
+  - `Sequence` added to typing imports in `mta_core.py` to support the new function signatures.
+  - All new code is fully self-contained: no new external dependencies, no changes to existing functionality.
+
+### Post-test refinements
+
+  - **Altair interactive view now shows endpoint annotations.** The first release of axis projection only annotated the matplotlib export with the endpoint words/topics; the Altair interactive chart was bare. The chart now displays top words (or topic names, or both, per the user's choice) at all axis extremities: vertically stacked at the left and right edges for the X axis, horizontally tiled (5 per row, wrapping into bands near the top and bottom edges) for the Y axis. The horizontal tiling on the Y axis prevents the long vertical stacks from intruding into the scatter cloud at the center of the plot.
+  - **Default number of endpoint items raised** from 5 to 15, with the slider range extended from 5–30 (was 3–15). On real corpora, 5 words at each extremity is rarely enough to characterise a pole — 15 is a better default, and 30 is the practical upper bound before the figure becomes unreadable.
+  - **Mode "Both" no longer loses the topic names.** A bug in the matplotlib helper `_box(words, n_top)` was re-slicing the list to `n_top` even when the caller had already prepared a mixed `top_words + separator + topic_names` list — which silently truncated the topic names. The slicing is now done entirely by the caller, so "Both" mode shows both groups as intended.
+  - **Group coloring now works in axis projection.** The Streamlit page, the batch CLI action and the interactive menu all called `extract_groups_from_filenames(...)` and treated its return value as a DataFrame with a `.columns` attribute. The function actually returns a `(dict, list)` tuple — `(filename → group_code, skipped_filenames)`. Three call sites were rewritten to unpack the tuple correctly, report skipped files to the user, and build the color list in the order of `labels` so that the scatter coloring aligns with each document. The user-visible error `'tuple' object has no attribute 'columns'` is gone.
+
 ## MTA version 3.1 -- May 2026 -- Minor release
 
 Network views — bipartite graph visualizations of the topic model — are added to all three interfaces (Streamlit, interactive CLI menu, batch mode).
@@ -22,6 +50,8 @@ Network views — bipartite graph visualizations of the topic model — are adde
 ### Bug fixes
 
   - **Windows launcher (`start_MTA.bat`).** The Windows menu launcher had Unix-style line endings (LF only) instead of Windows-style (CRLF). `cmd.exe` parses multi-line `.bat` files that contain labels (`:menu`, `:streamlit`, …) and `goto` instructions correctly only when lines end with CRLF; without it, the file was parsed as one long line and produced cryptic errors such as `'ho' n'est pas reconnu en tant que commande` (truncations of `echo`) or `'ot' n'est pas reconnu` (truncations of `not`). Fixed by reconverting all `.bat` files to CRLF and adding a `.gitattributes` file at the repository root that pins line endings per file extension: `*.bat` → CRLF, `*.sh` / `*.command` → LF, `*.py` → LF, binary types (PDF, PNG, ZIP, …) are marked as binary so Git never touches them. This guarantees correct line endings on every fresh clone, regardless of OS or `core.autocrlf` setting.
+
+  - **macOS launchers (`*.command`, `*.sh`).** The macOS double-clickable launchers and the Unix shell scripts lacked the Unix executable bit (mode `0644` instead of `0755`). Users would see misleading error messages mentioning insufficient privileges, with nothing visibly wrong in the Finder's permissions panel (which hides the Unix execute bit by default). Symptom: a `.command` file refuses to run even after right-clicking → Open → Confirm to bypass Gatekeeper. Fixed by setting `chmod +x` on all `.command` and `.sh` files and committing the executable bit so that future `git clone` operations preserve it. The ZIP distribution also carries the bit, so users extracting the ZIP on macOS or Linux get working launchers out of the box. *Users who already cloned the repository before this fix* can simply run, in a Terminal inside the `MTA-for-Master/` folder: `chmod +x *.command *.sh`.
 
 The visualization engine lives in a new module `mta_network.py`. New dependencies: `networkx>=3.0`, `fa2-modified>=0.4`. Both are added to `requirements.txt`. No existing functionality has been changed.
 

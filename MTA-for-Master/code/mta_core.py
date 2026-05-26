@@ -20,7 +20,7 @@ by C. Papilloud (https://github.com/cp1972/mta-app).
 
 import re
 import warnings
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Sequence
 
 import numpy as np
 import pandas as pd
@@ -1517,3 +1517,387 @@ def compare_groups_pairwise(
             out[f"{col}_BH"] = np.nan
 
     return out
+
+
+# =============================================================================
+# AXIS PROJECTION — user-defined semantic axes on the doctopic matrix
+# =============================================================================
+#
+# Concept (Niveau 3 of the PCA discussion):
+#   Instead of running an automatic PCA on the K-dimensional doctopic
+#   matrix and using its first principal components as axes (which
+#   captures variance but loses interpretability), we let the user
+#   define each axis as an *opposition* between two pools of topics.
+#
+#   Axis X is defined by two disjoint sets of topic indices:
+#       - L_x  (left pole)
+#       - R_x  (right pole)
+#
+#   The direction vector of the axis in topic space is then:
+#       v_x[k] = +1 / |R_x|    if k in R_x
+#       v_x[k] = -1 / |L_x|    if k in L_x
+#       v_x[k] =  0            otherwise
+#
+#   The score of document d on the axis is the dot product:
+#       score_x(d) = <doctopic[d, :], v_x>
+#
+#   Documents pulled equally toward both poles score near 0; documents
+#   weighted strongly on R_x score positive; on L_x score negative.
+#
+#   The same procedure defines axes Y and Z if needed (1, 2 or 3 axes).
+#
+# Why this matters in topic modelling:
+#   This brings into MTA the spirit of Bourdieu's correspondence analysis
+#   (axes as interpretable oppositions, not as variance directions) and
+#   of Slapin & Proksch's text scaling (Wordfish/Wordscores). The
+#   researcher's hypotheses drive the dimensions, not the algorithm.
+# =============================================================================
+
+
+def axis_direction_vector(
+    n_topics: int,
+    left_pole: List[int],
+    right_pole: List[int],
+) -> np.ndarray:
+    """
+    Build the direction vector v of length n_topics for an axis defined
+    by two opposing pools of topics.
+
+    Parameters
+    ----------
+    n_topics : int
+        Total number of topics (K) in the doctopic matrix.
+    left_pole : list of int
+        Topic indices forming the negative pole. May be empty (then the
+        axis has only a positive pole, useful for "intensity" axes).
+    right_pole : list of int
+        Topic indices forming the positive pole. May be empty.
+
+    Returns
+    -------
+    ndarray, shape (n_topics,)
+        Weights summing to 0 (or to -1 / +1 if one pole is empty).
+        Topics not mentioned have weight 0.
+
+    Raises
+    ------
+    ValueError
+        If pools share a topic, or contain out-of-range indices.
+    """
+    left = list(left_pole)
+    right = list(right_pole)
+
+    # Validate indices
+    for k in left + right:
+        if not (0 <= k < n_topics):
+            raise ValueError(
+                f"Topic index {k} out of range [0, {n_topics - 1}]"
+            )
+
+    # Validate disjointness
+    overlap = set(left) & set(right)
+    if overlap:
+        raise ValueError(
+            f"Topic indices {sorted(overlap)} appear in both poles "
+            "of the same axis"
+        )
+
+    if not left and not right:
+        raise ValueError("At least one pole must be non-empty")
+
+    v = np.zeros(n_topics, dtype=float)
+    if right:
+        v[right] = 1.0 / len(right)
+    if left:
+        v[left] = -1.0 / len(left)
+    return v
+
+
+def project_documents_on_axes(
+    doctopic: np.ndarray,
+    axes: List[Tuple[List[int], List[int]]],
+) -> np.ndarray:
+    """
+    Project documents onto 1, 2 or 3 user-defined semantic axes.
+
+    Parameters
+    ----------
+    doctopic : ndarray, shape (D, K)
+        Document-topic weight matrix.
+    axes : list of (left_pole, right_pole) tuples
+        One tuple per axis. 1 to 3 axes supported.
+
+    Returns
+    -------
+    ndarray, shape (D, n_axes)
+        Document scores in the user-defined factorial space.
+    """
+    if not (1 <= len(axes) <= 3):
+        raise ValueError(
+            f"Number of axes must be 1, 2 or 3 — got {len(axes)}"
+        )
+
+    n_topics = doctopic.shape[1]
+    directions = np.zeros((n_topics, len(axes)), dtype=float)
+    for j, (left, right) in enumerate(axes):
+        directions[:, j] = axis_direction_vector(n_topics, left, right)
+    # doctopic (D, K) @ directions (K, n_axes) -> (D, n_axes)
+    return doctopic @ directions
+
+
+def axis_endpoint_words(
+    topicwords: np.ndarray,
+    vocab: Sequence[str],
+    left_pole: List[int],
+    right_pole: List[int],
+    top_n: int = 15,
+) -> Dict[str, List[Tuple[str, float]]]:
+    """
+    Find the most characteristic words at each end of an axis.
+
+    For each pole, aggregate the topic-word weights of the topics in
+    the pole (average), then return the top_n words sorted by weight.
+
+    Parameters
+    ----------
+    topicwords : ndarray, shape (K, W)
+        Topic-word weight matrix (from NMF or LDA).
+    vocab : sequence of str, length W
+        Vocabulary.
+    left_pole, right_pole : list of int
+        Topic indices defining the two ends of the axis.
+    top_n : int
+        Number of words to return per pole.
+
+    Returns
+    -------
+    dict with keys 'left' and 'right', each mapping to a list of
+    (word, weight) tuples sorted by descending weight.
+    """
+    out = {"left": [], "right": []}
+    for label, pool in [("left", left_pole), ("right", right_pole)]:
+        if not pool:
+            continue
+        # Average the topic-word vectors of all topics in this pool
+        pool_vector = topicwords[pool, :].mean(axis=0)
+        top_idx = np.argsort(pool_vector)[::-1][:top_n]
+        out[label] = [(vocab[i], float(pool_vector[i])) for i in top_idx]
+    return out
+
+
+def plot_axis_projection(
+    coords: np.ndarray,
+    labels: Sequence[str],
+    axis_titles: Sequence[str],
+    color_values: Optional[Sequence] = None,
+    color_label: str = "Group",
+    endpoint_words: Optional[List[Dict[str, List[Tuple[str, float]]]]] = None,
+    figsize: Tuple[float, float] = (10.0, 8.0),
+    title: Optional[str] = None,
+    n_top_endpoint_words: int = 5,
+    max_doc_labels: int = 30,
+):
+    """
+    Render the axis projection as a static matplotlib figure
+    (publication-ready, PNG/PDF export).
+
+    Parameters
+    ----------
+    coords : ndarray, shape (D, n_axes)
+        Document scores. n_axes can be 1, 2 or 3.
+    labels : sequence of str
+        Document labels (one per row of coords).
+    axis_titles : sequence of str
+        Display name of each axis (e.g. "Critique ↔ Innovation").
+    color_values : optional sequence of length D
+        Discrete category for each document (e.g. group, dominant
+        topic). If None, all dots are the same color.
+    color_label : str
+        Title of the color legend.
+    endpoint_words : optional list of dicts
+        One dict per axis, with keys 'left' and 'right', mapping to
+        lists of (word, weight) tuples. The top n_top_endpoint_words
+        are shown near each axis extremity.
+    figsize, title, n_top_endpoint_words, max_doc_labels : cosmetic.
+
+    Returns
+    -------
+    matplotlib.figure.Figure or None
+        None if coords is empty.
+    """
+    if coords.size == 0:
+        return None
+
+    n_axes = coords.shape[1]
+    if n_axes == 1:
+        # 1D plot: documents on a line, jittered vertically for visibility
+        fig, ax = plt.subplots(figsize=figsize)
+        rng = np.random.RandomState(42)
+        y_jitter = rng.uniform(-0.05, 0.05, size=len(coords))
+        _scatter_with_colors(ax, coords[:, 0], y_jitter,
+                             color_values, color_label)
+        ax.axhline(0, color="#888", linewidth=0.5, zorder=0)
+        ax.axvline(0, color="#888", linewidth=0.5, zorder=0)
+        ax.set_xlabel(axis_titles[0], fontsize=10)
+        ax.set_yticks([])
+        ax.set_ylim(-0.5, 0.5)
+        if endpoint_words:
+            _annotate_endpoints_1d(ax, endpoint_words[0],
+                                    n_top_endpoint_words)
+        if title:
+            ax.set_title(title, fontsize=12, pad=10)
+        fig.tight_layout()
+        return fig
+
+    if n_axes == 2:
+        fig, ax = plt.subplots(figsize=figsize)
+        _scatter_with_colors(ax, coords[:, 0], coords[:, 1],
+                             color_values, color_label,
+                             legend_loc="upper left")
+        ax.axhline(0, color="#888", linewidth=0.5, zorder=0)
+        ax.axvline(0, color="#888", linewidth=0.5, zorder=0)
+        # Expand axis limits slightly to leave room for endpoint labels
+        ax.margins(x=0.10, y=0.10)
+        ax.set_xlabel(axis_titles[0], fontsize=10)
+        ax.set_ylabel(axis_titles[1], fontsize=10)
+        if endpoint_words:
+            _annotate_endpoints_2d(ax, endpoint_words,
+                                    n_top_endpoint_words)
+        # Document labels for the most extreme points (avoid clutter)
+        _annotate_extreme_documents(ax, coords, labels, max_doc_labels)
+        if title:
+            ax.set_title(title, fontsize=12, pad=10)
+        fig.tight_layout()
+        return fig
+
+    # n_axes == 3
+    from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+    fig = plt.figure(figsize=figsize)
+    ax = fig.add_subplot(111, projection="3d")
+    if color_values is not None:
+        unique_vals = sorted(set(color_values), key=lambda v: str(v))
+        cmap = plt.get_cmap("tab10")
+        for i, cat in enumerate(unique_vals):
+            mask = np.array([cv == cat for cv in color_values])
+            ax.scatter(coords[mask, 0], coords[mask, 1], coords[mask, 2],
+                       label=str(cat), color=cmap(i % 10),
+                       alpha=0.7, s=30)
+        ax.legend(title=color_label, fontsize=8, loc="best")
+    else:
+        ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2],
+                   alpha=0.7, s=30)
+    ax.set_xlabel(axis_titles[0], fontsize=9)
+    ax.set_ylabel(axis_titles[1], fontsize=9)
+    ax.set_zlabel(axis_titles[2], fontsize=9)
+    if title:
+        ax.set_title(title, fontsize=12, pad=10)
+    fig.tight_layout()
+    return fig
+
+
+def _scatter_with_colors(ax, x, y, color_values, color_label,
+                          legend_loc="best"):
+    """Helper: scatter with categorical coloring + legend."""
+    if color_values is not None:
+        unique_vals = sorted(set(color_values), key=lambda v: str(v))
+        cmap = plt.get_cmap("tab10")
+        for i, cat in enumerate(unique_vals):
+            mask = np.array([cv == cat for cv in color_values])
+            ax.scatter(x[mask], y[mask],
+                       label=str(cat), color=cmap(i % 10),
+                       alpha=0.7, s=40, edgecolors="none")
+        ax.legend(title=color_label, fontsize=8, loc=legend_loc,
+                  frameon=True, framealpha=0.85)
+    else:
+        ax.scatter(x, y, alpha=0.7, s=40,
+                   color="#4477aa", edgecolors="none")
+
+
+def _annotate_endpoints_2d(ax, endpoint_words, n_top):
+    """
+    Place top-N characteristic words at the four ends of a 2D plot:
+      - axis X: words for left pole on the left edge, right pole on the right edge
+      - axis Y: words for left pole at the bottom, right pole at the top
+
+    endpoint_words = [{'left': [...], 'right': [...]}, ...] for X then Y.
+    Each list is a sequence of (word, weight) tuples.
+    """
+    if len(endpoint_words) < 2:
+        return
+    xlim = ax.get_xlim()
+    ylim = ax.get_ylim()
+    pad_x = (xlim[1] - xlim[0]) * 0.02
+    pad_y = (ylim[1] - ylim[0]) * 0.02
+
+    def _box(ax, x, y, words, ha, va, color="#7a5500"):
+        """
+        Render an endpoint word box.
+
+        The list of words is rendered as-is — slicing to `n_top` is done
+        by the caller. This matters for the "Both" display mode in the
+        Streamlit page, which prepares a list of N words + topic names;
+        re-slicing here would drop the topic names.
+        """
+        if not words:
+            return
+        txt = "\n".join([w for w, _ in words])
+        ax.text(x, y, txt, fontsize=7.5, color=color,
+                ha=ha, va=va, style="italic", fontweight="bold",
+                bbox=dict(facecolor="white", edgecolor="#cccccc",
+                          alpha=0.85, pad=3, boxstyle="round,pad=0.3"))
+
+    # X axis: horizontal extremities, vertically centered (mid-height)
+    y_mid = (ylim[0] + ylim[1]) / 2
+    _box(ax, xlim[0] + pad_x, y_mid,
+         endpoint_words[0].get("left", []),
+         ha="left", va="center")
+    _box(ax, xlim[1] - pad_x, y_mid,
+         endpoint_words[0].get("right", []),
+         ha="right", va="center")
+
+    # Y axis: vertical extremities, horizontally centered (mid-width)
+    x_mid = (xlim[0] + xlim[1]) / 2
+    _box(ax, x_mid, ylim[0] + pad_y,
+         endpoint_words[1].get("left", []),
+         ha="center", va="bottom")
+    _box(ax, x_mid, ylim[1] - pad_y,
+         endpoint_words[1].get("right", []),
+         ha="center", va="top")
+
+
+def _annotate_endpoints_1d(ax, endpoint_dict, n_top):
+    """Place top-N characteristic words at each end of a 1D plot."""
+    xlim = ax.get_xlim()
+    pad = (xlim[1] - xlim[0]) * 0.02
+    for pole, x_pos, ha in [
+        ("left",  xlim[0] + pad, "left"),
+        ("right", xlim[1] - pad, "right"),
+    ]:
+        words = endpoint_dict.get(pole, [])[:n_top]
+        if words:
+            txt = "\n".join([w for w, _ in words])
+            ax.text(x_pos, 0.35, txt, fontsize=8, color="#555",
+                    ha=ha, va="top", style="italic",
+                    bbox=dict(facecolor="white", edgecolor="none",
+                              alpha=0.6, pad=2))
+
+
+def _annotate_extreme_documents(ax, coords, labels, max_labels):
+    """
+    Annotate the documents that are most extreme (largest |x|+|y|).
+    Limits the number of labels for readability.
+    """
+    if len(labels) <= max_labels:
+        idx_to_label = range(len(labels))
+    else:
+        scores = np.abs(coords[:, 0]) + np.abs(coords[:, 1])
+        idx_to_label = np.argsort(scores)[::-1][:max_labels]
+
+    for i in idx_to_label:
+        label = labels[i]
+        # Truncate very long labels
+        if len(label) > 22:
+            label = label[:11] + "…" + label[-10:]
+        ax.annotate(label, (coords[i, 0], coords[i, 1]),
+                    fontsize=6.5, color="#333", alpha=0.7,
+                    xytext=(3, 2), textcoords="offset points")

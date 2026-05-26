@@ -68,6 +68,11 @@ network_page = st.Page(
     title="Network views",
     icon="🕸",
 )
+axis_page = st.Page(
+    "pages/8_Axis_projection.py",
+    title="Axis projection",
+    icon="🎯",
+)
 
 # Build the menu. The `position="sidebar"` puts it on the left, as before.
 # The dict keys ("MTA Menu") replace the auto-generated section label.
@@ -75,7 +80,7 @@ pg = st.navigation(
     {
         "MTA Menu": [home_page, load_page, models_page,
                      weights_page, evolution_page, context_page,
-                     groups_page, network_page],
+                     groups_page, network_page, axis_page],
     },
     position="sidebar",
 )
