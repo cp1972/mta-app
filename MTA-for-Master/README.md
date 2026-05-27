@@ -2,7 +2,9 @@
 
 Welcome. This folder contains everything you need to do **topic
 modelling** on your own computer, without depending on any online
-service. Once installed, MTA works offline.
+service. Once installed, MTA works offline. This README was thought
+to be useful to my students in master, but I hope that it can also
+serve everyone interested in topic modelling and willing to try MTA.
 
 ## In 3 steps
 

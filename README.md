@@ -68,7 +68,7 @@ and Farsi texts.
 
 ## Which version should I use?
 
-  - **You are a student or a new user → version 3.0**
+  - **You are a student or a new user → version 3.4**
     (`MTA-for-Master/`). It installs in a few clicks, no Anaconda
     needed, and the Streamlit interface walks you through the workflow
     page by page. Open
@@ -83,14 +83,14 @@ and Farsi texts.
     recommended replacement when you have time to port your scripts.
 
   - **You want to know what changed between versions →** read
-    [`changes.md`](changes.md). The 3.0 entry at the top summarises
+    [`changes.md`](changes.md). The 3.4 entry at the top summarises
     the reorganization; older entries (2.0, 1.9, …, 0.1) are kept
     intact below it.
 
-## A note on the new version (3.0)
+## A note on the new version (since 3.0)
 
 Versions 0.1 through 2.0 of MTA were a single terminal script
-(`MTA.py`) that prompted the user step by step. Version 3.0 keeps that
+(`MTA.py`) that prompted the user step by step. Since version 3.0, we keep that
 analytical core but separates it from the interface:
 
   - **`mta_core.py`** — pure-Python engine: same algorithms, no I/O,
