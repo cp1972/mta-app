@@ -1,5 +1,34 @@
 # Major changes in versions of MTA
 
+## MTA version 3.5 -- September 2026 -- Minor release
+
+Starting point and stability of topic models. NMF and LDA do not find their topics in one step: they start from an initial guess and improve it until nothing changes any more. Where they start can change where they end. Up to 3.4, MTA always used the same start (NMF: `init='nndsvd'`, `random_state=1`; LDA: `random_state=100`). This made every result exactly reproducible — but a single run cannot show whether another, equally good start would have produced other topics or another classification of the documents. Version 3.5 makes the start a choice and adds a way to measure how much the result depends on it.
+
+### What's new
+
+  - **Choice of the starting point.** `run_nmf()` gains `init` (`nndsvd`, `nndsvda`, `nndsvdar`, `random`) and `seed`; `run_lda()` gains `seed`. The defaults are the former fixed values, so **every result computed with 3.4 or earlier is reproduced exactly** (checked on a test corpus: identical document-topic matrices for NMF and LDA). With `nndsvd` and `nndsvda` the seed has no effect, since these starts are deterministic.
+
+  - **Stability across starting points — three new functions in `mta_core.py`.** `topic_stability()` fits the same model `n_runs` times from different random starts (seeds `base_seed`, `base_seed+1`, …). `match_topics()` aligns the topics of each run with the reference run (the default start) by the cosine similarity of their word weights and the Hungarian algorithm, so that "Topic 3" means the same topic in every run. `stability_over_k()` repeats this for several numbers of topics; `plot_stability_over_k()` draws the result.
+
+  - **What is measured.** For each number of topics K: the *topic similarity* (how closely each topic is reproduced in the other runs; 1 = identical word weights), the share of runs in which a topic is reproduced with a similarity of at least 0.8, the *consensus topic* of every document (the topic it receives in most runs) with its *agreement* (the share of runs that give it), the share of *stable documents* (agreement at or above a threshold, default 2/3), and the *adjusted Rand index* (ARI) between each run's classification of the documents and the reference (1 = identical, 0 = chance level).
+
+  - **Streamlit, page "Topic models".** An expander *Starting point (advanced)* under 2.2 lets the user choose the NMF start and seed and the LDA seed. A new section **2.3 — How stable is the model?** runs the stability check for a range of K (slider), a number of runs, a threshold and NMF or LDA, and shows the summary table and chart by K, the per-topic reproduction and the per-document consensus and agreement, all downloadable.
+
+  - **Batch mode.** New options `--init` and `--seed` apply to every action that fits a model (`nmf`, `lda`, `evolution`, `word-weights`, `compare-groups`, `network`, `axis-analysis`). New action **`stability`** with `--stability-ks` (e.g. `4-6` or `4,6,8`), `--n-runs` (default 20), `--stability-method {nmf,lda}` and `--stability-threshold` (default 0.667). It writes `nmf_stability_over_k.csv`, and for each K the tables `_documents`, `_topics` and `_runs`, a JSON summary and the plot. `stability` is not part of `--action all`, because it multiplies the computing time by the number of runs.
+
+### Why this matters methodologically
+
+  - **A second kind of evidence for choosing K.** The cross-validation metrics (Elbow, Silhouette, Calinski-Harabasz, Davies-Bouldin, Cophenet) judge the structure of *one* solution. Stability asks another question: does the solution come back when the model starts elsewhere? A number of topics whose topics and document assignments survive many starts is a more reliable basis for interpretation than one whose topics change from run to run — even when both look equally good on the metrics.
+
+  - **Reliability at the level of the document.** When topic models are used to *classify* documents (actors, interviews, biographical stages), the consensus topic and its agreement say for each document how firmly it belongs to its topic. Documents below the threshold can be reported as uncertain instead of being forced into a topic.
+
+  - **Reproducibility is kept.** Each run has its own seed, so a stability analysis is itself exactly reproducible.
+
+### Backward compatibility
+
+  - No existing call changes its result: `run_nmf(matrix, k)` and `run_lda(matrix, k)` behave as before. Scripts calling `mta_core` directly keep working. The interactive CLI menu is unchanged in this release.
+  - For stability runs, `init='nndsvd'` and `'nndsvda'` are refused with an explanation, since they would repeat the same run `n_runs` times.
+
 ## MTA version 3.4 -- May 2026 -- Minor release
 
 User-facing simplification of the axis analysis feature. The 3.2 release introduced "Axis projection" (visual scatter), the 3.3 release added "Axis statistics" (enriched export + ANOVA) as a separate page/action/menu. After user feedback that the strong overlap between the two — same model choice, same multi-select widgets for the topic poles, same custom-label fields — was confusing students who had to redefine their axes twice, the two are now unified everywhere.

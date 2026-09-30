@@ -35,12 +35,14 @@ from sklearn.metrics import (
     silhouette_score,
     davies_bouldin_score,
     calinski_harabasz_score,
+    adjusted_rand_score,
 )
 from sklearn import decomposition
 from sklearn.decomposition import LatentDirichletAllocation
 
 from scipy.cluster.hierarchy import cophenet, linkage
 from scipy.spatial.distance import pdist
+from scipy.optimize import linear_sum_assignment
 
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 warnings.filterwarnings("ignore", category=FutureWarning, module='sklearn')
@@ -380,9 +382,31 @@ def plot_metrics(metrics: Dict) -> plt.Figure:
 # 4. NMF AND LDA MODELS
 # =============================================================================
 
-def run_nmf(tf_matrix, n_topics: int) -> Dict:
-    """Train an NMF model and return its main components."""
-    nmf = decomposition.NMF(n_components=n_topics, random_state=1, init='nndsvd', max_iter=400)
+# Starting points accepted for NMF (scikit-learn names).
+#   nndsvd   : deterministic SVD-based start (MTA default since 0.1);
+#              the seed has no effect.
+#   nndsvda  : nndsvd with zeros filled by the data mean; deterministic.
+#   nndsvdar : nndsvd with zeros filled by small random values; the seed
+#              changes the start slightly.
+#   random   : fully random start; the seed changes the start completely.
+NMF_INITS = ("nndsvd", "nndsvda", "nndsvdar", "random")
+DEFAULT_NMF_INIT = "nndsvd"
+DEFAULT_NMF_SEED = 1
+DEFAULT_LDA_SEED = 100
+
+
+def run_nmf(tf_matrix, n_topics: int, init: str = DEFAULT_NMF_INIT,
+            seed: int = DEFAULT_NMF_SEED, max_iter: int = 400) -> Dict:
+    """Train an NMF model and return its main components.
+
+    `init` and `seed` define the starting point (see NMF_INITS). The
+    defaults reproduce every MTA result computed before version 3.5.
+    With init='nndsvd' or 'nndsvda' the seed has no effect.
+    """
+    if init not in NMF_INITS:
+        raise ValueError(f"init must be one of {NMF_INITS}, got {init!r}")
+    nmf = decomposition.NMF(n_components=n_topics, random_state=seed,
+                            init=init, max_iter=max_iter)
     doctopic = nmf.fit_transform(tf_matrix)
     topicwords = nmf.components_
     link = linkage(doctopic, 'ward')
@@ -396,12 +420,16 @@ def run_nmf(tf_matrix, n_topics: int) -> Dict:
     }
 
 
-def run_lda(lda_matrix, n_topics: int) -> Dict:
-    """Train an LDA model and return its main components."""
+def run_lda(lda_matrix, n_topics: int, seed: int = DEFAULT_LDA_SEED) -> Dict:
+    """Train an LDA model and return its main components.
+
+    `seed` defines the random starting point. The default (100)
+    reproduces every MTA result computed before version 3.5.
+    """
     lda = LatentDirichletAllocation(
         n_components=n_topics, evaluate_every=-1,
         learning_method='online', n_jobs=-1,
-        learning_offset=50., random_state=100, batch_size=128,
+        learning_offset=50., random_state=seed, batch_size=128,
     )
     doctopic = lda.fit_transform(lda_matrix)
     topicwords = lda.components_
@@ -414,6 +442,253 @@ def run_lda(lda_matrix, n_topics: int) -> Dict:
         "linkage": link,
         "cophenet": coph,
     }
+
+
+# =============================================================================
+# 4b. STABILITY ACROSS STARTING POINTS (version 3.5)
+#   NMF and LDA reach a local optimum that depends on where they start.
+#   MTA's default start is fixed, so a single run always gives the same
+#   result — which says nothing about whether another, equally good start
+#   would give other topics. The functions below fit the same model
+#   n_runs times from different starting points, align each run's topics
+#   with a reference run, and report (1) how well each topic is
+#   reproduced and (2) how consistently each document keeps its dominant
+#   topic. The consensus topic of a document is the one it receives in
+#   most runs; its agreement is the share of runs that give it.
+# =============================================================================
+
+def match_topics(ref_topicwords: np.ndarray,
+                 topicwords: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Align the topics of one run with those of a reference run.
+
+    Uses the cosine similarity of the topic-word vectors and the
+    Hungarian algorithm (one-to-one assignment maximising the total
+    similarity).
+
+    Returns
+    -------
+    mapping : ndarray, shape (K,)
+        mapping[j] = index of the reference topic matched to topic j.
+    similarity : ndarray, shape (K,)
+        similarity[j] = cosine similarity between topic j and its match.
+    """
+    a = np.asarray(ref_topicwords, dtype=float)
+    b = np.asarray(topicwords, dtype=float)
+    a = a / np.maximum(np.linalg.norm(a, axis=1, keepdims=True), 1e-12)
+    b = b / np.maximum(np.linalg.norm(b, axis=1, keepdims=True), 1e-12)
+    sim = b @ a.T                               # (K_run, K_ref)
+    rows, cols = linear_sum_assignment(-sim)
+    mapping = np.empty(b.shape[0], dtype=int)
+    similarity = np.empty(b.shape[0], dtype=float)
+    mapping[rows] = cols
+    similarity[rows] = sim[rows, cols]
+    return mapping, similarity
+
+
+def _dominant_or_missing(doctopic: np.ndarray) -> np.ndarray:
+    """Dominant topic per document, -1 for documents with no weight."""
+    dom = np.asarray(doctopic).argmax(axis=1)
+    dom[np.asarray(doctopic).sum(axis=1) <= 0] = -1
+    return dom
+
+
+def topic_stability(
+    matrix,
+    n_topics: int,
+    method: str = "nmf",
+    n_runs: int = 20,
+    base_seed: int = 0,
+    init: str = "random",
+    threshold: float = 2 / 3,
+    doc_labels: Optional[List[str]] = None,
+    progress_callback=None,
+) -> Dict:
+    """
+    Fit the same topic model n_runs times from different starting points
+    and measure how stable topics and document assignments are.
+
+    Parameters
+    ----------
+    matrix : sparse matrix
+        tf_matrix (for NMF) or lda_matrix (for LDA) from build_matrices().
+    n_topics : int
+        Number of topics K.
+    method : 'nmf' or 'lda'
+    n_runs : int
+        Number of runs with different starting points (seeds
+        base_seed, base_seed+1, ...).
+    init : str
+        NMF only. Starting method for the runs: 'random' (default) or
+        'nndsvdar'. 'nndsvd'/'nndsvda' are deterministic and would give
+        n_runs identical runs, so they are refused.
+    threshold : float
+        A document counts as stable when its consensus topic is reached
+        in at least this share of runs (default 2/3).
+
+    Returns
+    -------
+    dict with:
+        reference : the reference model (MTA default start), as returned
+                    by run_nmf()/run_lda(); consensus topics use its numbering.
+        documents : DataFrame — Document, Reference topic, Consensus topic,
+                    Agreement (share of runs), Stable (bool).
+        topics    : DataFrame — per reference topic: mean and minimum
+                    cosine similarity of its match across runs, and the
+                    share of runs in which it is reproduced (similarity >= 0.8).
+        runs      : DataFrame — per run: seed, mean topic similarity,
+                    ARI of the document partition vs. the reference.
+        summary   : dict — the headline numbers of the four tables.
+    """
+    method = method.lower()
+    if method not in ("nmf", "lda"):
+        raise ValueError("method must be 'nmf' or 'lda'")
+    if method == "nmf" and init not in ("random", "nndsvdar"):
+        raise ValueError(
+            "For stability runs, init must be 'random' or 'nndsvdar'; "
+            f"{init!r} is deterministic and would repeat the same run.")
+    if n_runs < 2:
+        raise ValueError("n_runs must be at least 2")
+
+    fit = (lambda seed: run_nmf(matrix, n_topics, init=init, seed=seed)) \
+        if method == "nmf" else (lambda seed: run_lda(matrix, n_topics, seed=seed))
+    reference = run_nmf(matrix, n_topics) if method == "nmf" \
+        else run_lda(matrix, n_topics)
+    ref_dom = _dominant_or_missing(reference["doctopic"])
+    n_docs = ref_dom.shape[0]
+    if doc_labels is None:
+        doc_labels = [f"doc_{i}" for i in range(n_docs)]
+
+    assignments = np.full((n_runs, n_docs), -1, dtype=int)
+    sims = np.zeros((n_runs, n_topics))
+    run_rows = []
+    for r in range(n_runs):
+        seed = base_seed + r
+        res = fit(seed)
+        mapping, sim = match_topics(reference["topicwords"], res["topicwords"])
+        dom = _dominant_or_missing(res["doctopic"])
+        aligned = np.where(dom >= 0, mapping[np.maximum(dom, 0)], -1)
+        assignments[r] = aligned
+        sims[r, mapping] = sim
+        valid = (aligned >= 0) & (ref_dom >= 0)
+        run_rows.append({
+            "Run": r + 1, "Seed": seed,
+            "Mean topic similarity": float(sim.mean()),
+            "ARI vs reference": float(adjusted_rand_score(ref_dom[valid], aligned[valid]))
+            if valid.sum() > 1 else float("nan"),
+        })
+        if progress_callback:
+            progress_callback(r + 1, n_runs, f"{method.upper()} K={n_topics}")
+
+    cons, agree = [], []
+    for d in range(n_docs):
+        col = assignments[:, d]
+        col = col[col >= 0]
+        if col.size == 0:
+            cons.append(-1); agree.append(float("nan")); continue
+        counts = np.bincount(col, minlength=n_topics)
+        cons.append(int(counts.argmax()))
+        agree.append(float(counts.max() / n_runs))
+    cons = np.array(cons); agree = np.array(agree)
+    stable = np.where(np.isnan(agree), False, agree >= threshold)
+
+    documents = pd.DataFrame({
+        "Document": doc_labels,
+        "Reference topic": [f"Topic_{t}" if t >= 0 else "" for t in ref_dom],
+        "Consensus topic": [f"Topic_{t}" if t >= 0 else "" for t in cons],
+        "Agreement": agree,
+        "Stable": stable,
+    })
+    topics = pd.DataFrame({
+        "Topic": [f"Topic_{k}" for k in range(n_topics)],
+        "Mean similarity": sims.mean(axis=0),
+        "Min similarity": sims.min(axis=0),
+        "Reproduced (share of runs, sim >= 0.8)": (sims >= 0.8).mean(axis=0),
+        "Documents (consensus)": [int((cons == k).sum()) for k in range(n_topics)],
+        "Stable documents": [int(((cons == k) & stable).sum()) for k in range(n_topics)],
+    })
+    runs = pd.DataFrame(run_rows)
+    assigned = ~np.isnan(agree)
+    summary = {
+        "method": method.upper(), "n_topics": n_topics, "n_runs": n_runs,
+        "init": init if method == "nmf" else "seed",
+        "mean_topic_similarity": float(sims.mean()),
+        "min_topic_similarity": float(sims.min()),
+        "mean_agreement": float(np.nanmean(agree)) if assigned.any() else float("nan"),
+        "share_stable_documents": float(stable[assigned].mean()) if assigned.any() else float("nan"),
+        "mean_ari": float(np.nanmean(runs["ARI vs reference"])),
+        "consensus_equals_reference": float((cons[assigned] == ref_dom[assigned]).mean())
+        if assigned.any() else float("nan"),
+        "threshold": threshold,
+    }
+    return {"reference": reference, "documents": documents, "topics": topics,
+            "runs": runs, "summary": summary}
+
+
+def stability_over_k(
+    matrix,
+    ks: Sequence[int],
+    method: str = "nmf",
+    n_runs: int = 20,
+    base_seed: int = 0,
+    init: str = "random",
+    threshold: float = 2 / 3,
+    doc_labels: Optional[List[str]] = None,
+    progress_callback=None,
+) -> Tuple[pd.DataFrame, Dict[int, Dict]]:
+    """
+    Run topic_stability() for several numbers of topics, to compare which
+    K gives the most stable model.
+
+    Returns
+    -------
+    table : DataFrame, one row per K with the summary numbers.
+    details : dict K -> full result of topic_stability().
+    """
+    details, rows = {}, []
+    total = len(ks) * n_runs
+    for i, k in enumerate(ks):
+        cb = None
+        if progress_callback:
+            cb = (lambda r, n, label, _i=i: progress_callback(_i * n_runs + r, total, label))
+        res = topic_stability(matrix, int(k), method=method, n_runs=n_runs,
+                              base_seed=base_seed, init=init,
+                              threshold=threshold, doc_labels=doc_labels,
+                              progress_callback=cb)
+        details[int(k)] = res
+        s = res["summary"]
+        rows.append({
+            "K": int(k),
+            "Mean topic similarity": s["mean_topic_similarity"],
+            "Min topic similarity": s["min_topic_similarity"],
+            "Mean agreement": s["mean_agreement"],
+            "Stable documents (share)": s["share_stable_documents"],
+            "Mean ARI vs reference": s["mean_ari"],
+            "Consensus = reference (share)": s["consensus_equals_reference"],
+        })
+    return pd.DataFrame(rows), details
+
+
+def plot_stability_over_k(table: pd.DataFrame, language: str = "en") -> plt.Figure:
+    """Line plot of the stability measures against K."""
+    L = get_labels(language)
+    cols = ["Stable documents (share)", "Mean agreement",
+            "Mean topic similarity", "Mean ARI vs reference"]
+    names = {"en": ["Stable documents", "Mean agreement", "Topic similarity", "ARI vs reference"],
+             "fr": ["Documents stables", "Accord moyen", "Similarité des topics", "ARI vs référence"],
+             "de": ["Stabile Dokumente", "Mittlere Übereinstimmung", "Topic-Ähnlichkeit", "ARI zur Referenz"]
+             }.get(language, None) or ["Stable documents", "Mean agreement", "Topic similarity", "ARI vs reference"]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    for c, n in zip(cols, names):
+        ax.plot(table["K"], table[c], marker="o", label=n)
+    ax.set_xlabel(L["number_of_topics"])
+    ax.set_ylabel(L["score"])
+    ax.set_ylim(0, 1.02)
+    ax.set_xticks(list(table["K"]))
+    ax.grid(alpha=0.3)
+    ax.legend(frameon=False, fontsize=9)
+    fig.tight_layout()
+    return fig
 
 
 # =============================================================================
