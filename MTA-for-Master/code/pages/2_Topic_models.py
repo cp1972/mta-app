@@ -169,6 +169,31 @@ with col_l:
         value=min(5, max_topics_model),
     )
 
+with st.expander("⚙️ Starting point (advanced, new in 3.5)"):
+    st.markdown(
+        "NMF and LDA start from an initial guess and improve it step by "
+        "step. **Where they start can change the topics they end with.** "
+        "MTA's default start is fixed, so the same corpus always gives the "
+        "same result. Change the start here to see another, equally valid "
+        "solution — or use **2.3 Stability** below to test many starts at once."
+    )
+    c_i, c_s, c_ls = st.columns(3)
+    with c_i:
+        nmf_init = st.selectbox(
+            "NMF start", options=list(mta.NMF_INITS),
+            index=list(mta.NMF_INITS).index(mta.DEFAULT_NMF_INIT),
+            help="nndsvd (default) and nndsvda are deterministic: the seed "
+                 "has no effect. nndsvdar adds small random values; random "
+                 "starts from scratch.")
+    with c_s:
+        nmf_seed = st.number_input("NMF seed", min_value=0, max_value=10**6,
+                                   value=mta.DEFAULT_NMF_SEED, step=1)
+    with c_ls:
+        lda_seed = st.number_input("LDA seed", min_value=0, max_value=10**6,
+                                   value=mta.DEFAULT_LDA_SEED, step=1)
+    if nmf_init in ("nndsvd", "nndsvda") and nmf_seed != mta.DEFAULT_NMF_SEED:
+        st.caption("ℹ️ With this NMF start the seed has no effect.")
+
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
     run_nmf_btn = st.button("🟢 Run NMF", type="primary",
@@ -179,7 +204,8 @@ with col_btn2:
 
 if run_nmf_btn:
     with st.spinner(f"NMF with {n_topics_nmf} topics…"):
-        res = mta.run_nmf(st.session_state.matrices["tf_matrix"], n_topics_nmf)
+        res = mta.run_nmf(st.session_state.matrices["tf_matrix"], n_topics_nmf,
+                          init=nmf_init, seed=int(nmf_seed))
         st.session_state.nmf_results = res
         st.session_state.nmf_words = mta.top_words_per_topic(
             res["topicwords"], st.session_state.matrices["tf_names"]
@@ -187,7 +213,8 @@ if run_nmf_btn:
 
 if run_lda_btn:
     with st.spinner(f"LDA with {n_topics_lda} topics…"):
-        res = mta.run_lda(st.session_state.matrices["lda_matrix"], n_topics_lda)
+        res = mta.run_lda(st.session_state.matrices["lda_matrix"], n_topics_lda,
+                          seed=int(lda_seed))
         st.session_state.lda_results = res
         st.session_state.lda_words = mta.top_words_per_topic(
             res["topicwords"], st.session_state.matrices["lda_names"]
@@ -211,6 +238,106 @@ if st.session_state.nmf_results or st.session_state.lda_results:
                       help="Closer to 1.0 = more stable clustering structure.")
         else:
             st.metric("LDA Cophenet", "—", help="Run LDA to compute.")
+
+
+st.divider()
+
+
+# =============================================================================
+# 2.3 — STABILITY ACROSS STARTING POINTS (3.5)
+# =============================================================================
+
+st.subheader("2.3 — How stable is the model? (new in 3.5)")
+st.markdown(
+    "The same model is fitted many times, each time from a different "
+    "random start. Topics of every run are matched to the reference run "
+    "(the default start above). MTA then reports:\n"
+    "- **Topic similarity** — how closely each topic is reproduced "
+    "(cosine similarity of its word weights, 1 = identical);\n"
+    "- **Agreement** — for each document, the share of runs in which it "
+    "gets its most frequent (*consensus*) topic;\n"
+    "- **Stable documents** — documents whose agreement reaches the "
+    "threshold;\n"
+    "- **ARI** — adjusted Rand index between each run's document "
+    "classification and the reference (1 = identical, 0 = chance).\n\n"
+    "Comparing several numbers of topics shows which K gives the most "
+    "stable model."
+)
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    stab_method = st.selectbox("Model", ["NMF", "LDA"], key="stab_method")
+with c2:
+    k_range = st.slider("Numbers of topics (K)", min_value=2,
+                        max_value=max(3, max_topics_model),
+                        value=(min(4, max_topics_model), min(6, max_topics_model)))
+with c3:
+    n_runs = st.number_input("Runs per K", min_value=5, max_value=500,
+                             value=20, step=5,
+                             help="20 runs give a first picture; 50–100 "
+                                  "give reliable shares.")
+with c4:
+    threshold = st.slider("Stable if agreement ≥", 0.5, 1.0, 2 / 3, 0.05)
+stab_init = "random"
+if stab_method == "NMF":
+    stab_init = st.radio("Random start for NMF runs", ["random", "nndsvdar"],
+                         horizontal=True,
+                         help="random: fully different starts (strict test). "
+                              "nndsvdar: default start with small random "
+                              "variations (mild test).")
+
+if st.button("🧪 Check stability"):
+    ks = list(range(k_range[0], k_range[1] + 1))
+    progress = st.progress(0.0, text="Starting…")
+
+    def _cb(i, total, label):
+        progress.progress(min(1.0, i / total), text=f"{label} ({i}/{total})")
+
+    matrix = (st.session_state.matrices["tf_matrix"] if stab_method == "NMF"
+              else st.session_state.matrices["lda_matrix"])
+    with st.spinner("Fitting the models…"):
+        table, details = mta.stability_over_k(
+            matrix, ks, method=stab_method.lower(), n_runs=int(n_runs),
+            init=stab_init, threshold=float(threshold),
+            doc_labels=st.session_state.doc_labels, progress_callback=_cb)
+    progress.empty()
+    st.session_state.stability = {"table": table, "details": details,
+                                  "method": stab_method}
+
+if st.session_state.stability is not None:
+    stab = st.session_state.stability
+    table = stab["table"]
+    st.markdown(f"**Stability by number of topics — {stab['method']}**")
+    st.dataframe(table.style.format({c: "{:.2f}" for c in table.columns if c != "K"}),
+                 use_container_width=True, hide_index=True)
+    if len(table) > 1:
+        st.line_chart(table.set_index("K")[["Stable documents (share)",
+                                            "Mean agreement",
+                                            "Mean topic similarity",
+                                            "Mean ARI vs reference"]],
+                      height=260, use_container_width=True)
+    download_csv(table, f"{stab['method'].lower()}_stability_over_k")
+    k_sel = st.selectbox("Details for K =", list(stab["details"].keys()))
+    res = stab["details"][k_sel]
+    st.markdown("**Topics: how well is each topic reproduced?**")
+    st.dataframe(res["topics"].style.format(
+        {"Mean similarity": "{:.2f}", "Min similarity": "{:.2f}",
+         "Reproduced (share of runs, sim >= 0.8)": "{:.0%}"}),
+        use_container_width=True, hide_index=True)
+    st.markdown("**Documents: consensus topic and agreement**")
+    st.dataframe(res["documents"].style.format({"Agreement": "{:.0%}"}),
+                 use_container_width=True, hide_index=True)
+    download_csv(res["documents"], f"{stab['method'].lower()}_stability_K{k_sel}_documents")
+    with st.expander("Per-run details and PNG export"):
+        st.dataframe(res["runs"], use_container_width=True, hide_index=True)
+        if len(table) > 1:
+            fig = mta.plot_stability_over_k(table, language=_LANG)
+            import io as _io
+            buf = _io.BytesIO(); fig.savefig(buf, format="png", dpi=200)
+            st.download_button("⬇ PNG", buf.getvalue(),
+                               file_name=f"{stab['method'].lower()}_stability_over_k.png",
+                               mime="image/png")
+
+st.divider()
 
 
 # =============================================================================

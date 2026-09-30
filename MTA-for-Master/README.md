@@ -100,6 +100,38 @@ To run your first analysis after starting MTA:
 6. Visit the **🕸 Network views** page to see the same model as a
    bipartite graph: topics in color, documents and top-words around them
 
+## Is my model stable? (new in 3.5)
+
+NMF and LDA start from an initial guess and improve it step by step.
+Where they start can change the topics they end with. MTA's default
+start is fixed, so you always get the same result — which does not tell
+you whether another start would have given other topics.
+
+On the **📊 Topic models** page, section **2.3 — How stable is the
+model?** fits the same model many times (for example 20 or 50 runs),
+each time from a different random start, and for a range of topic
+numbers (for example 4 to 6). It reports:
+
+- **Topic similarity** — how closely each topic comes back in the other
+  runs (1 = identical);
+- **Agreement** — for each document, the share of runs in which it gets
+  its most frequent (*consensus*) topic;
+- **Stable documents** — the share of documents whose agreement reaches
+  the threshold (default: 2 of 3 runs);
+- **ARI** — how similar each run's classification of the documents is to
+  the reference run (1 = identical, 0 = no better than chance).
+
+Choose the number of topics whose topics and documents stay stable, and
+report documents below the threshold as uncertain. In batch mode:
+
+```bash
+./.venv/bin/python code/MTA_v3.py --corpus PATH --stopwords PATH \
+    --action stability --stability-ks 4-6 --n-runs 50
+```
+
+`--init random --seed 7` (NMF) or `--seed 7` (LDA) run any other action
+from a chosen starting point.
+
 ## The Network views page
 
 After running NMF or LDA, the **🕸 Network views** page renders the

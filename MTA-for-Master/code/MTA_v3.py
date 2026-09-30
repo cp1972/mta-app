@@ -30,6 +30,11 @@ Batch — word-weight analysis for a few keywords:
     python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
                      --action word-weights --words "Impfung,Maskenpflicht"
 
+Batch — stability of NMF with 4, 5 and 6 topics, 50 runs each (3.5):
+
+    python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
+                     --action stability --stability-ks 4-6 --n-runs 50
+
 Batch — full pipeline:
 
     python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
@@ -231,6 +236,9 @@ def run_batch(args: argparse.Namespace) -> int:
         elif action == "network":
             _action_network(args, matrices, labels,
                             output_dir, plot_formats)
+        elif action == "stability":
+            _action_stability(args, matrices, labels,
+                              output_dir, csv_json_formats, plot_formats)
         elif action == "axis-analysis":
             _action_axis_analysis(args, matrices, labels,
                                    output_dir, csv_json_formats,
@@ -268,6 +276,74 @@ def run_batch(args: argparse.Namespace) -> int:
 # =============================================================================
 # PER-ACTION HANDLERS (one per menu of original MTA.py)
 # =============================================================================
+
+def _fit_nmf(args, matrices):
+    """NMF with the starting point chosen on the command line (3.5).
+    Without --init/--seed this is exactly the pre-3.5 model."""
+    init = getattr(args, "init", None) or mta.DEFAULT_NMF_INIT
+    seed = args.seed if getattr(args, "seed", None) is not None else mta.DEFAULT_NMF_SEED
+    return mta.run_nmf(matrices["tf_matrix"], args.n_topics, init=init, seed=seed)
+
+
+def _fit_lda(args, matrices):
+    """LDA with the seed chosen on the command line (3.5)."""
+    seed = args.seed if getattr(args, "seed", None) is not None else mta.DEFAULT_LDA_SEED
+    return mta.run_lda(matrices["lda_matrix"], args.n_topics, seed=seed)
+
+
+def _parse_ks(spec, default_k):
+    """'4-6' -> [4,5,6]; '4,6,8' -> [4,6,8]; None -> [default_k]."""
+    if not spec:
+        return [default_k]
+    out = []
+    for part in str(spec).split(","):
+        part = part.strip()
+        if "-" in part:
+            a, b = part.split("-", 1)
+            out.extend(range(int(a), int(b) + 1))
+        elif part:
+            out.append(int(part))
+    return sorted(set(out))
+
+
+def _action_stability(args, matrices, labels,
+                      output_dir, csv_json_formats, plot_formats):
+    """Stability of the topic model across starting points (3.5)."""
+    method = args.stability_method
+    ks = _parse_ks(args.stability_ks, args.n_topics)
+    matrix = matrices["tf_matrix"] if method == "nmf" else matrices["lda_matrix"]
+    init = args.init if (args.init in ("random", "nndsvdar")) else "random"
+    base_seed = args.seed if args.seed is not None else 0
+    print(f"  {method.upper()}: K = {ks}, {args.n_runs} runs per K, "
+          f"init={init if method == 'nmf' else '-'}, seeds {base_seed}..{base_seed + args.n_runs - 1}")
+    cb = lambda i, total, label: progress_bar(
+        i, total, prefix=f"    {label}", suffix=f"({i}/{total})", length=20)
+    table, details = mta.stability_over_k(
+        matrix, ks, method=method, n_runs=args.n_runs, base_seed=base_seed,
+        init=init, threshold=args.stability_threshold, doc_labels=labels,
+        progress_callback=cb)
+    save_dataframe(table.set_index("K"), f"{method}_stability_over_k",
+                   output_dir, csv_json_formats)
+    for k, res in details.items():
+        save_dataframe(res["documents"].set_index("Document"),
+                       f"{method}_stability_K{k}_documents", output_dir, csv_json_formats)
+        save_dataframe(res["topics"].set_index("Topic"),
+                       f"{method}_stability_K{k}_topics", output_dir, csv_json_formats)
+        save_dataframe(res["runs"].set_index("Run"),
+                       f"{method}_stability_K{k}_runs", output_dir, csv_json_formats)
+    if len(ks) > 1:
+        fig = mta.plot_stability_over_k(table, language=args.language)
+        save_figure(fig, f"{method}_stability_over_k", output_dir, plot_formats)
+    (output_dir / f"{method}_stability_summary.json").write_text(
+        json.dumps({str(k): r["summary"] for k, r in details.items()}, indent=2),
+        encoding="utf-8")
+    print("\n  K   stable docs   mean agreement   topic similarity   ARI")
+    for _, r in table.iterrows():
+        print(f"  {int(r['K']):<3} {r['Stable documents (share)']:>10.0%}"
+              f"   {r['Mean agreement']:>14.2f}   {r['Mean topic similarity']:>16.2f}"
+              f"   {r['Mean ARI vs reference']:.2f}")
+    print("  ✓ Stability analysis complete")
+
 
 def _plot_metrics_matplotlib(metrics: dict, language: str = "en") -> plt.Figure:
     """Re-render the 6 cross-validation metrics in a 2x3 matplotlib figure."""
@@ -327,7 +403,7 @@ def _action_nmf(args, matrices, corpus_re, labels,
         save_figure(fig, "cv_metrics", output_dir, plot_formats)
 
     print(f"  Running NMF with k={args.n_topics}…")
-    res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+    res = _fit_nmf(args, matrices)
     words = mta.top_words_per_topic(res["topicwords"], matrices["tf_names"])
     dist = mta.topic_distribution_per_doc(res["doctopic"], labels)
     dom = mta.dominant_topic_per_doc(dist)
@@ -358,7 +434,7 @@ def _action_lda(args, matrices, labels,
                 output_dir, csv_json_formats, plot_formats):
     """LDA."""
     print(f"  Running LDA with k={args.n_topics}…")
-    res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
+    res = _fit_lda(args, matrices)
     words = mta.top_words_per_topic(res["topicwords"], matrices["lda_names"])
     dist = mta.topic_distribution_per_doc(res["doctopic"], labels)
     dom = mta.dominant_topic_per_doc(dist)
@@ -423,7 +499,7 @@ def _action_evolution(args, matrices, labels,
     """Topic evolution through texts — needs NMF or LDA result."""
     # We need a model. If neither was run before in this batch, run NMF.
     print(f"  Computing NMF for evolution (k={args.n_topics})…")
-    res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+    res = _fit_nmf(args, matrices)
     rm = mta.rolling_mean_distribution(
         res["doctopic"], labels, window=args.window,
     )
@@ -525,7 +601,7 @@ def _action_word_weights(args, matrices, labels,
 
     # Need an NMF model to get topicwords
     print(f"  Running NMF (k={args.n_topics})…")
-    res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+    res = _fit_nmf(args, matrices)
 
     df_topics, missing_topics = mta.words_weight_per_topic(
         res["topicwords"], matrices["tf_names"], word_list,
@@ -760,7 +836,7 @@ def _action_compare_groups(args, matrices, labels,
     """
     # Need an NMF model for the topic distribution
     print(f"  Running NMF (k={args.n_topics}) for distribution…")
-    res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+    res = _fit_nmf(args, matrices)
     distribution = mta.topic_distribution_per_doc(res["doctopic"], labels)
 
     # Define groups
@@ -910,10 +986,10 @@ def _action_network(args, matrices, labels,
     method = getattr(args, "network_method", "nmf")
     if method == "lda":
         print(f"  Running LDA with k={args.n_topics} for network views…")
-        res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
+        res = _fit_lda(args, matrices)
     else:
         print(f"  Running NMF with k={args.n_topics} for network views…")
-        res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+        res = _fit_nmf(args, matrices)
 
     doctopic = res["doctopic"]
     topicwords = res["topicwords"]
@@ -1077,11 +1153,11 @@ def _action_axis_analysis(args, matrices, labels,
     method = getattr(args, "axis_method", "nmf")
     if method == "lda":
         print(f"  Running LDA with k={args.n_topics}…")
-        res = mta.run_lda(matrices["lda_matrix"], args.n_topics)
+        res = _fit_lda(args, matrices)
         vocab = list(matrices["lda_names"])
     else:
         print(f"  Running NMF with k={args.n_topics}…")
-        res = mta.run_nmf(matrices["tf_matrix"], args.n_topics)
+        res = _fit_nmf(args, matrices)
         vocab = list(matrices["tf_names"])
     doctopic = res["doctopic"]
     topicwords = res["topicwords"]
@@ -1366,7 +1442,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--action",
                    choices=["nmf", "lda", "evolution", "word-weights",
                             "semantic", "compare-groups", "network",
-                            "axis-analysis",
+                            "axis-analysis", "stability",
                             # Aliases kept for backward compatibility
                             # (3.2/3.3 → 3.4 transition). They run the
                             # same axis-analysis action and emit a
@@ -1380,6 +1456,27 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Number of topics for NMF/LDA (default: 5).")
     p.add_argument("--max-topics", type=int, default=None,
                    help="If set, run cross-validation up to this k.")
+    # --- Starting point and stability (3.5) -------------------------------
+    p.add_argument("--init", choices=list(mta.NMF_INITS), default=None,
+                   help="NMF starting method (default: nndsvd, as before 3.5). "
+                        "'random' and 'nndsvdar' depend on --seed.")
+    p.add_argument("--seed", type=int, default=None,
+                   help="Random seed of the starting point (default: 1 for "
+                        "NMF, 100 for LDA, as before 3.5). For --action "
+                        "stability: the first of --n-runs consecutive seeds "
+                        "(default 0).")
+    p.add_argument("--n-runs", type=int, default=20,
+                   help="For --action stability: number of runs per K "
+                        "(default: 20).")
+    p.add_argument("--stability-ks", type=str, default=None,
+                   help="For --action stability: numbers of topics to "
+                        "compare, e.g. '4-6' or '4,6,8' (default: --n-topics).")
+    p.add_argument("--stability-method", choices=["nmf", "lda"], default="nmf",
+                   help="For --action stability: which model (default: nmf).")
+    p.add_argument("--stability-threshold", type=float, default=2 / 3,
+                   help="For --action stability: minimum share of runs in "
+                        "which a document must keep its consensus topic to "
+                        "count as stable (default: 0.667).")
     p.add_argument("--words", type=str, default=None,
                    help="Comma- or space-separated words for word-weights "
                         "or semantic actions.")

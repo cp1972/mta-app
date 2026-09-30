@@ -17,9 +17,9 @@ that older work remains reproducible.
 
 | Folder              | What it contains                                      | For whom                                 |
 | ------------------- | ----------------------------------------------------- | ---------------------------------------- |
-| `MTA-for-Master/`   | **Versions 3.0–3.4** — Streamlit web app + modern CLI | Everyone, current users                  |
+| `MTA-for-Master/`   | **Versions 3.0–3.5** — Streamlit web app + modern CLI | Everyone, current users                  |
 | `archive/`          | **Versions ≤ 2.0** — original single-script `MTA.py`  | Users with legacy workflows or do-files  |
-| `changes.md`        | Full version history (3.4 down to 0.1, January 2017)  | Anyone tracking what changed             |
+| `changes.md`        | Full version history (3.5 down to 0.1, January 2017)  | Anyone tracking what changed             |
 | `LICENSE`           | License                                               | —                                        |
 
 If you arrived here for the first time, **use `MTA-for-Master/`**. The
@@ -56,6 +56,12 @@ can still find it, its documentation, and reproduce earlier analyses.
     design, not just directions of maximum variance. The enriched CSV
     export is designed to plug directly into Stata or R for downstream
     analysis.
+  - **Stability across starting points** (3.5): fit the same NMF or
+    LDA model many times from different random starts and measure how
+    well topics are reproduced and how firmly each document keeps its
+    topic (consensus topic + agreement, adjusted Rand index). Comparing
+    several numbers of topics shows which one gives the most stable
+    model.
   - **Visualisation** with high-quality plots (PDF + PNG, multilingual:
     English / French / German) and **results saved as tables** (CSV +
     JSON) for further use in Stata, R, Gephi, or any spreadsheet.
@@ -68,7 +74,7 @@ and Farsi texts.
 
 ## Which version should I use?
 
-  - **You are a student or a new user → version 3.4**
+  - **You are a student or a new user → version 3.5**
     (`MTA-for-Master/`). It installs in a few clicks, no Anaconda
     needed, and the Streamlit interface walks you through the workflow
     page by page. Open
@@ -83,7 +89,7 @@ and Farsi texts.
     recommended replacement when you have time to port your scripts.
 
   - **You want to know what changed between versions →** read
-    [`changes.md`](changes.md). The 3.4 entry at the top summarises
+    [`changes.md`](changes.md). The 3.5 entry at the top summarises
     the reorganization; older entries (2.0, 1.9, …, 0.1) are kept
     intact below it.
 

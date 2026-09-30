@@ -38,6 +38,7 @@ _DEFAULT_STATE = {
     "lda_results": None,
     "nmf_words": None,
     "lda_words": None,
+    "stability": None,     # 3.5: result of the multi-run stability check
     "uploader_round": 0,  # incremented to reset uploader widgets
     "chart_language": "en",  # 'en' / 'fr' / 'de' — picked on home page
 }
@@ -54,7 +55,8 @@ def reset_corpus_state() -> None:
     """Wipe everything downstream of the corpus (used by 'Clear all files')."""
     for k in ["raw_texts", "doc_labels", "stopwords",
               "corpus_wo", "corpus_re", "matrices", "metrics",
-              "nmf_results", "lda_results", "nmf_words", "lda_words"]:
+              "nmf_results", "lda_results", "nmf_words", "lda_words",
+              "stability"]:
         st.session_state[k] = None
 
 
