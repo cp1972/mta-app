@@ -85,6 +85,7 @@ The `examples/` folder contains:
 - **`demo_corpus_fr/`** — the same six texts in French
 - **`stopwords_en.txt`** — a list of English stopwords
 - **`stopwords_fr.txt`** — a list of French stopwords
+- **`stopwords_de.txt`** — a list of German stopwords
 
 To run your first analysis after starting MTA:
 
@@ -288,9 +289,16 @@ interpretation, which the axis definitions themselves embody.
 
 ## Working with your own data
 
-Your texts must be `.txt` files (plain text) encoded in UTF-8. If you
-have Word, PDF or other files, convert them to `.txt` first
+Your texts must be `.txt` files (plain text), preferably encoded in UTF-8
+(since 3.6, files saved by older Windows editors in Windows-1252 are read as
+well). If you have Word, PDF or other files, convert them to `.txt` first
 (LibreOffice or Word both offer "Save as → Text").
+
+The stopwords file is a `.txt` file with one word per line. Since 3.6, words
+may also be separated by commas, semicolons or spaces, capitals do not matter
+("Die" removes "die"), and the encoding and the system that saved the file
+(Windows, macOS, Linux) make no difference. The app tells you how many
+stopwords it has read — check that the number matches your list.
 
 Good practice: create one folder per analysis project, with a subfolder
 for the texts and a stopwords file matching your language and corpus.

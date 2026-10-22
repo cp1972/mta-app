@@ -143,8 +143,8 @@ def load_corpus(corpus_path: str, verbose: bool = True
     labels = []
     n = len(paths)
     for i, p in enumerate(paths, 1):
-        with open(p, "r", encoding="utf-8", errors="replace") as f:
-            raw_texts.append(f.read())
+        with open(p, "rb") as f:   # 3.6: UTF-8 with or without BOM, else Windows-1252
+            raw_texts.append(mta.decode_text_file(f.read()))
         labels.append(os.path.basename(p))
         if verbose:
             progress_bar(i, n, prefix="Loading corpus",
@@ -153,9 +153,9 @@ def load_corpus(corpus_path: str, verbose: bool = True
 
 
 def load_stopwords(stopwords_path: str) -> list[str]:
-    """Read a stopwords file (one word per line)."""
-    with open(stopwords_path, "r", encoding="utf-8", errors="replace") as f:
-        return [line.strip() for line in f if line.strip()]
+    """Read a stopwords file (one word per line; since 3.6 also commas or spaces, any capitalisation,
+    with or without byte-order mark, UTF-8 or Windows-1252)."""
+    return mta.read_stopwords(stopwords_path)
 
 
 # =============================================================================

@@ -107,13 +107,11 @@ if text_files:
 
 # --- Preprocessing happens here, as soon as both uploads are present ---
 if text_files and stop_file:
-    raw_texts = [f.read().decode("utf-8", errors="replace") for f in text_files]
+    raw_texts = [mta.decode_text_file(f.read()) for f in text_files]   # 3.6: UTF-8 with/without BOM, else cp1252
     doc_labels = [f.name for f in text_files]
-    stopwords = [
-        line.strip() for line in
-        stop_file.read().decode("utf-8", errors="replace").splitlines()
-        if line.strip()
-    ]
+    # 3.6: tolerant reading (byte-order mark, Windows encoding, commas or spaces as separators,
+    # capitals, macOS umlauts) — see mta_core.read_stopwords
+    stopwords = mta.read_stopwords(stop_file)
 
     st.session_state.raw_texts = raw_texts
     st.session_state.doc_labels = doc_labels

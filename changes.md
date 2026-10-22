@@ -1,5 +1,29 @@
 # Major changes in versions of MTA
 
+## MTA version 3.6 -- October 2026 -- Bug-fix release
+
+Stopwords are now removed however the list is written. A user reported that stopwords from his list were not removed. The cause: MTA lowercases the texts before removing stopwords but compared them with the list exactly as written, so any entry with a capital ("Die", "Jahr") never matched. Checking this turned up five more ways in which stopwords slipped through.
+
+### What was wrong (up to 3.5)
+
+  - **Capitals.** Entries with capitals were never removed — neither from the cleaned corpus nor from the matrices of the topic models (scikit-learn also compares lowercased words with the unchanged list).
+  - **Punctuation.** Stopwords were removed while punctuation was still attached to the words; "alles." or "nicht," only became "alles" and "nicht" afterwards and stayed in the cleaned corpus. The topic models were not affected (scikit-learn removed them again), but everything that works on the cleaned corpus directly was: semantic context (co-occurrence, word2vec) and what builds on it.
+  - **Byte-order mark.** A file saved with a byte-order mark (common with Windows editors) lost its first entry.
+  - **Encoding.** Files were always read as UTF-8; a list saved in Windows-1252 turned "für" into "f�r", so all words with umlauts or accents failed. The same held for corpus texts in Windows-1252.
+  - **macOS.** Umlauts saved in decomposed form (u + diaeresis, Unicode NFD) did not match the composed form (NFC), in either direction between list and texts.
+  - **Format.** A list separated by commas or spaces instead of one word per line was read as a single "stopword", and nothing was removed.
+
+### What changed
+
+  - **`mta_core.py`:** new functions `normalize_stopwords()`, `read_stopwords()` and `decode_text_file()`. Lists are read as UTF-8 with or without byte-order mark, otherwise as Windows-1252, brought to Unicode NFC, split at line breaks, commas, semicolons and spaces, stripped of quotes and punctuation, lowercased and de-duplicated. `preprocess_corpus()` brings the texts to NFC as well and removes stopwords once more after the punctuation has gone; `build_matrices()` passes the normalised list to scikit-learn.
+  - **App (page "Load corpus") and batch mode** read stopwords and corpus texts with these functions, so both behave the same.
+  - **Test:** `code/test_stopwords.py` writes the same list in seven forms (UTF-8, byte-order mark, Windows-1252, macOS, capitals, commas, spaces); in every form no stopword remains in the cleaned corpus or in the matrix. With 3.5 only the first form passed.
+
+### What this means for earlier results
+
+  - With a list in lowercase, one word per line, in UTF-8 — like the lists shipped in `examples/` — **the topic models are unchanged**: the TF-IDF and count matrices of the demo corpora are identical to 3.5. The cleaned corpus loses the few stopwords that were followed by punctuation (demo corpora: "them" twice and "then" once in English, "depuis" once in French), so results of the semantic context can change slightly.
+  - With a list that had capitals or one of the other problems above, the stopwords are now removed as intended, and the results change accordingly.
+
 ## MTA version 3.5 -- September 2026 -- Minor release
 
 Starting point and stability of topic models. NMF and LDA do not find their topics in one step: they start from an initial guess and improve it until nothing changes any more. Where they start can change where they end. Up to 3.4, MTA always used the same start (NMF: `init='nndsvd'`, `random_state=1`; LDA: `random_state=100`). This made every result exactly reproducible — but a single run cannot show whether another, equally good start would have produced other topics or another classification of the documents. Version 3.5 makes the start a choice and adds a way to measure how much the result depends on it.

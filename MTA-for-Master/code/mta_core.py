@@ -18,7 +18,9 @@ Author: refactoring for teaching purposes, based on MTA.py
 by C. Papilloud (https://github.com/cp1972/mta-app).
 """
 
+import os
 import re
+import unicodedata
 import warnings
 from typing import List, Tuple, Dict, Optional, Sequence
 
@@ -120,8 +122,67 @@ def wrap_ylabel(text: str, max_chars_per_line: int = 22) -> str:
 # 1. PREPROCESSING
 # =============================================================================
 
-def _remove_stopwords(corpus: List[str], stops: List[str]) -> List[str]:
-    """Remove stopwords word by word, case-insensitive."""
+# --- Stopwords (3.6) ----------------------------------------------------------
+# Up to 3.5 a stopword was only removed if it was written exactly as in the text after lowercasing:
+# entries with capitals ("Die", "Jahr"), a file saved with a byte-order mark (first entry lost), a
+# Windows (cp1252) file (umlauts garbled), a macOS file with decomposed umlauts, a list separated by
+# commas or spaces instead of one word per line, and stopwords followed by punctuation in the text
+# ("alles.", "nicht,") all slipped through. From 3.6 every list and every text is normalised the same
+# way, and stopwords are removed once more after the punctuation has gone.
+
+_STOP_SEP = re.compile(r"[\s,;]+")
+_STOP_EDGE = "\"'«»„“”‚‘’`.:!?()[]{}"
+
+
+def _nfc(text: str) -> str:
+    """Unicode normal form C: an umlaut is one character, whichever system wrote the file."""
+    return unicodedata.normalize("NFC", text)
+
+
+def normalize_stopwords(stopwords) -> List[str]:
+    """Return the stopwords as MTA compares them: NFC, lowercase, without surrounding quotes or
+    punctuation, without a byte-order mark, split at line breaks, commas, semicolons and spaces,
+    without duplicates (order kept). Accepts a list or a single string."""
+    if stopwords is None:
+        return []
+    if isinstance(stopwords, str):
+        stopwords = [stopwords]
+    out, seen = [], set()
+    for entry in stopwords:
+        for w in _STOP_SEP.split(_nfc(str(entry)).replace("\ufeff", "")):
+            w = w.strip(_STOP_EDGE).lower()
+            if w and w not in seen:
+                seen.add(w)
+                out.append(w)
+    return out
+
+
+def decode_text_file(data: bytes) -> str:
+    """Decode an uploaded or read text file: UTF-8 (with or without byte-order mark); if that
+    fails, Windows-1252, which older Windows editors use for German and French."""
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
+def read_stopwords(source) -> List[str]:
+    """Read a stopwords file: a path, raw bytes or an uploaded file object (anything with .read()).
+    One word per line is the usual format; commas, semicolons and spaces also separate words."""
+    if hasattr(source, "read"):
+        data = source.read()
+    elif isinstance(source, (bytes, bytearray)):
+        data = bytes(source)
+    else:
+        with open(os.fspath(source), "rb") as f:
+            data = f.read()
+    text = decode_text_file(data) if isinstance(data, (bytes, bytearray)) else str(data)
+    return normalize_stopwords(text.splitlines())
+
+
+def _remove_stopwords(corpus: List[str], stops) -> List[str]:
+    """Remove stopwords word by word, case-insensitive (stops: normalised, see normalize_stopwords)."""
+    stops = set(stops)
     out = []
     for sentence in corpus:
         tmp = [w for w in sentence.lower().split() if w.strip('"') not in stops]
@@ -175,8 +236,12 @@ def preprocess_corpus(
         Minimally cleaned corpus, keeping punctuation. Useful for
         extracting representative sentences per topic.
     """
+    # 3.6: one normal form for texts and stopwords (see normalize_stopwords)
+    raw_texts = [_nfc(t) for t in raw_texts]
+    stops = set(normalize_stopwords(stopwords))
+
     # Progressive cleaning as in the original MTA.py
-    c = _remove_stopwords(raw_texts, stopwords)
+    c = _remove_stopwords(raw_texts, stops)
     c = _remove_digits(c)
     c = _remove_urls(c)
     c = _remove_dots(c)
@@ -186,7 +251,7 @@ def preprocess_corpus(
         ' '.join(
             w for w in sent.split()
             if not (w.startswith('www') or w.startswith('http'))
-            and w not in stopwords
+            and w not in stops
         )
         for sent in c
     ]
@@ -194,8 +259,9 @@ def preprocess_corpus(
 
     # Remove punctuation then filter by word length
     c_no_punct = [re.sub(r'\W+', ' ', i) for i in c]
+    # 3.6: stopwords that were followed by punctuation ("alles.", "nicht,") are only free now
     corpus_wo = [
-        " ".join(w for w in sent.split(" ") if len(w) >= int(min_word_length))
+        " ".join(w for w in sent.split(" ") if len(w) >= int(min_word_length) and w not in stops)
         for sent in c_no_punct
     ]
 
@@ -232,6 +298,7 @@ def build_matrices(
         lda_names     : feature names (words) for LDA
         df_tfidf      : pandas TF-IDF DataFrame (documents x words), for inspection
     """
+    stopwords = normalize_stopwords(stopwords)   # 3.6: sklearn compares lowercased tokens
     tfidf_vec = TfidfVectorizer(
         min_df=min_df, max_df=max_df,
         encoding='utf-8', analyzer='word',
