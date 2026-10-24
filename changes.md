@@ -1,5 +1,29 @@
 # Major changes in versions of MTA
 
+## MTA version 3.7 -- October 2026 -- Minor release
+
+From clicks to a script. A user asked whether the commands behind the graphical interface could be recorded and exported, as in Stata or R, so that one can first experiment in the app and then keep the preferred analysis as syntax to reproduce it later. Up to 2.0, `MTA.py` wrote a log file of the inputs of an analysis, from which a script could be assembled by hand (see `archive/automate.md`). 3.7 goes further: every analysis of the app is translated into a command of the batch mode that reproduces it.
+
+### What's new
+
+  - **"As command (batch mode)".** Under each result of the app, an expander shows the batch command with the settings used — for Mac/Linux and for the Windows Command Prompt (cmd), ready to copy — and offers the whole session as a script. This covers the cross-validation, NMF, LDA and the stability check (page 2), word weights (3), topic evolution (4), semantic context (5), group comparison (6), the three network graphs (7) and the axis analysis (8).
+  - **Session log.** Every analysis computed in the app is written to a log (an analysis recomputed with unchanged settings is not written twice). In the sidebar, under *Session log*, the log can be downloaded as a script: `.sh` for Mac/Linux, `.bat` for Windows. The script lists the corpus files and the stopword list of the session, defines the paths of corpus and stopwords once at the top (to be entered in the sidebar, since the app knows the names of uploaded files but not their folder) and writes the results of each command to its own folder (`MTA-Results/01_nmf`, `02_…`). It can be edited and run again, on the same corpus or on another. Until a path is typed in the sidebar, the stopword file (and the CSV of groups) follow the files uploaded last.
+  - **Each command is complete.** It repeats the settings of the corpus and the matrices (minimum word length, `min_df`, `max_df`), the chart language and the topic model it builds on (number of topics, start, seed), because the batch mode recomputes them. Axis labels are always passed as shown in the app, custom or automatic, because they name the columns of the axis export and the batch mode builds its automatic labels differently.
+  - **Where the batch mode differs, the command says so** in a note: Word2Vec is trained with two threads and is not exactly reproducible; with a CSV of groups the batch mode analyses all columns of the file; α on page 6 only changes the highlighting. The NMF↔LDA comparison of page 2 has no command (it is computed from the two tables of top words).
+
+### What changed so that the commands reproduce the app
+
+  - **Batch mode, new options.** `--model {nmf,lda}` for `evolution`, `word-weights` and `compare-groups` (up to 3.6 these always used NMF; the app offers both). For `semantic`: `--embedding-window`, `--embedding-min-count`, `--embedding-dims`, `--n-similar`, `--cloud-neighbours` and `--best-docs-threshold` (up to 3.6 fixed at 5, 2, 100, 10, 50 and "all documents"). For `network`: `--combined-top-n` and `--combined-min-edge` for the combined graph. All defaults are the former fixed values: **every batch command of 3.6 gives the same result in 3.7** (checked: all tables of all actions identical on the demo corpus).
+  - **Batch mode, semantic context:** like the app, it now continues only with the query words that have a vector and reports the others; up to 3.6 a word missing from the embeddings still entered the selection of best documents. With words that are all in the vocabulary, nothing changes.
+  - **App, page "Load corpus": files are sorted by name**, as the batch mode reads them. The order of the uploaded files was that of the browser. NMF does not depend on the order of the documents, but **LDA does** (on the English demo corpus, a different order changed document–topic weights by up to 0.96). With files uploaded in alphabetical order — the usual case — nothing changes.
+  - **App:** rebuilding the matrices now also clears an earlier stability result, which belonged to the old matrices.
+  - **Fix:** the box plots of the axis analysis failed with matplotlib 3.11 (the argument `labels=` of `boxplot` was removed there); the tick labels are now set separately, which works with all versions.
+
+### Code
+
+  - New module `code/mta_commands.py` translates settings into argument lists and renders them for Mac/Linux and Windows (quoting, line continuation, `%` in `.bat`, CRLF line ends; values beginning with `-` are written as `--option=value`; `~/` in paths is left to the shell; a double quote inside a value is written as `'` on Windows, where it would break the line continuation). `shared.py` gains `command_box()`, `log_command()` and the sidebar log; the pages store the settings with which their results were computed (`matrix_settings`, `nmf_settings`, `lda_settings`, `cv_settings`, …).
+  - New test `code/test_commands.py`: (1) the batch mode reads every setting of a command back with its value, with Mac/Linux and Windows quoting; (2) the pages of the app are driven with Streamlit's test harness on a corpus of twelve documents with non-default settings (start, seed, numbers of topics, window, embedding parameters, LDA for groups, axes with a custom label…); every logged command is run in batch mode and its tables are compared with the app's results — 13 analyses, all identical (to 10⁻⁹). The test fails when a setting is not passed on (checked by breaking `--model` on purpose).
+
 ## MTA version 3.6 -- October 2026 -- Bug-fix release
 
 Stopwords are now removed however the list is written. A user reported that stopwords from his list were not removed. The cause: MTA lowercases the texts before removing stopwords but compared them with the list exactly as written, so any entry with a capital ("Die", "Jahr") never matched. Checking this turned up five more ways in which stopwords slipped through.

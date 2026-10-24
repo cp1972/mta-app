@@ -17,9 +17,9 @@ that older work remains reproducible.
 
 | Folder              | What it contains                                      | For whom                                 |
 | ------------------- | ----------------------------------------------------- | ---------------------------------------- |
-| `MTA-for-Master/`   | **Versions 3.0–3.5** — Streamlit web app + modern CLI | Everyone, current users                  |
+| `MTA-for-Master/`   | **Versions 3.0–3.7** — Streamlit web app + modern CLI | Everyone, current users                  |
 | `archive/`          | **Versions ≤ 2.0** — original single-script `MTA.py`  | Users with legacy workflows or do-files  |
-| `changes.md`        | Full version history (3.5 down to 0.1, January 2017)  | Anyone tracking what changed             |
+| `changes.md`        | Full version history (3.7 down to 0.1, January 2017)  | Anyone tracking what changed             |
 | `LICENSE`           | License                                               | —                                        |
 
 If you arrived here for the first time, **use `MTA-for-Master/`**. The
@@ -62,6 +62,10 @@ can still find it, its documentation, and reproduce earlier analyses.
     topic (consensus topic + agreement, adjusted Rand index). Comparing
     several numbers of topics shows which one gives the most stable
     model.
+  - **From clicks to a script** (3.7): every analysis of the app shows
+    the batch command that reproduces it, and the whole session can be
+    downloaded as a script (`.sh` or `.bat`) — explore in the app, then
+    keep, edit and rerun the analysis you prefer.
   - **Visualisation** with high-quality plots (PDF + PNG, multilingual:
     English / French / German) and **results saved as tables** (CSV +
     JSON) for further use in Stata, R, Gephi, or any spreadsheet.
@@ -74,7 +78,7 @@ and Farsi texts.
 
 ## Which version should I use?
 
-  - **You are a student or a new user → version 3.5**
+  - **You are a student or a new user → version 3.7**
     (`MTA-for-Master/`). It installs in a few clicks, no Anaconda
     needed, and the Streamlit interface walks you through the workflow
     page by page. Open
@@ -89,9 +93,8 @@ and Farsi texts.
     recommended replacement when you have time to port your scripts.
 
   - **You want to know what changed between versions →** read
-    [`changes.md`](changes.md). The 3.5 entry at the top summarises
-    the reorganization; older entries (2.0, 1.9, …, 0.1) are kept
-    intact below it.
+    [`changes.md`](changes.md). The newest entry is at the top; older
+    entries (2.0, 1.9, …, 0.1) are kept intact below.
 
 ## A note on the new version (since 3.0)
 
@@ -112,6 +115,16 @@ analytical core but separates it from the interface:
     — no Anaconda, no global Python install, no system pollution.
 
 See [`changes.md`](changes.md) for the full picture.
+
+## Use of AI in the development of MTA
+
+Since version 3.5, I use an AI assistant, Claude (Anthropic), to
+correct and optimise the code of MTA where necessary: to find and fix
+errors, to implement extensions I specify, and to write tests and
+assist in the redaction of the documentation. I decide what is changed
+and why, check the changes and release them. Every release is
+documented in [`changes.md`](changes.md), and its results are checked
+with tests that can be rerun.
 
 ## If you want to quote this software in your publication
 

@@ -38,6 +38,8 @@ from shared import (
     download_figure,
     download_csv,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 init_session_state()
@@ -277,6 +279,44 @@ for j, (left, right) in enumerate(axes):
 
 # Project documents
 coords = mta.project_documents_on_axes(doctopic, axes)
+
+
+# -----------------------------------------------------------------------------
+# The analysis as a batch command (3.7). The display and statistics settings
+# below are read from their widgets' state (defaults on the first run), so
+# the command is complete before the tabs are drawn.
+# -----------------------------------------------------------------------------
+
+def _spec(left, right):
+    return f"{','.join(map(str, left))} / {','.join(map(str, right))}".strip()
+
+
+_ss = st.session_state
+_a = ["--action", "axis-analysis", "--axis-method", method.lower()]
+for _j, (_l, _r) in enumerate(axes):
+    _x = "xyz"[_j]
+    # the label as resolved above (custom or automatic): the batch mode
+    # builds its automatic labels differently, and the label names the
+    # columns of the export
+    _a += [f"--axis-{_x}", _spec(_l, _r), f"--axis-{_x}-label", axis_labels[_j]]
+_color = {"Dominant topic": "dominant-topic", "Group (from filename)": "group",
+          "None": "none"}[_ss.get("proj_color_choice", "Dominant topic")]
+_stats_sep = _ss.get("stats_group_separator", "_")
+_a += ["--axis-color-by", _color,
+       "--axis-endpoint-words", str(int(_ss.get("proj_n_endpoint", 15))),
+       "--axis-stats-group-position", str(int(_ss.get("stats_group_position", 2))),
+       "--axis-stats-min-group-size", str(int(_ss.get("stats_min_group_size", 3))),
+       "--group-separator", _stats_sep]
+_notes = []
+if _color == "group":
+    _a += ["--group-position", str(int(_ss.get("proj_group_position", 2)))]
+    if _ss.get("proj_group_separator", "_") != _stats_sep:
+        _notes.append("The batch mode uses one separator for colouring and for "
+                      f"the ANOVA; the command uses that of the ANOVA ({_stats_sep!r}).")
+command_box(f"axis_{method}", f"Axis analysis ({method}), "
+            + "; ".join(f"{'XYZ'[j]}: {_spec(l, r)}" for j, (l, r) in enumerate(axes)),
+            f"axis-{method.lower()}", _a + model_command_args(method.lower()),
+            notes=_notes)
 
 
 # =============================================================================

@@ -22,6 +22,8 @@ from shared import (
     download_png_via_matplotlib,
     paired_color_range,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 # Page config is handled centrally by streamlit_app.py + st.navigation.
@@ -84,6 +86,7 @@ if st.button("📊 Compute cross-validation metrics"):
             progress_callback=cb,
         )
         st.session_state.metrics = metrics
+        st.session_state.cv_settings = {"max_topics": int(max_topics)}   # 3.7
     progress.empty()
 
 if st.session_state.metrics is not None:
@@ -143,6 +146,15 @@ if st.session_state.metrics is not None:
             xlabel=_LBL["number_of_topics"], ylabel=_LBL["score"],
         )
         download_csv(metrics_df, "cv_metrics")
+
+    _cv = st.session_state.get("cv_settings") or {"max_topics": int(max_topics)}
+    command_box(
+        "cv", f"Cross-validation up to {_cv['max_topics']} topics", "cross-validation",
+        ["--action", "nmf", "--max-topics", str(_cv["max_topics"])]
+        + model_command_args("nmf"),
+        notes=["The batch mode computes the cross-validation together with an NMF "
+               "model; its tables are written as well (cv_metrics.csv and "
+               "cv_suggestions.csv are the cross-validation)."])
 
 st.divider()
 
@@ -207,6 +219,8 @@ if run_nmf_btn:
         res = mta.run_nmf(st.session_state.matrices["tf_matrix"], n_topics_nmf,
                           init=nmf_init, seed=int(nmf_seed))
         st.session_state.nmf_results = res
+        st.session_state.nmf_settings = {"n_topics": int(n_topics_nmf),   # 3.7
+                                         "init": nmf_init, "seed": int(nmf_seed)}
         st.session_state.nmf_words = mta.top_words_per_topic(
             res["topicwords"], st.session_state.matrices["tf_names"]
         )
@@ -216,6 +230,8 @@ if run_lda_btn:
         res = mta.run_lda(st.session_state.matrices["lda_matrix"], n_topics_lda,
                           seed=int(lda_seed))
         st.session_state.lda_results = res
+        st.session_state.lda_settings = {"n_topics": int(n_topics_lda),   # 3.7
+                                         "seed": int(lda_seed)}
         st.session_state.lda_words = mta.top_words_per_topic(
             res["topicwords"], st.session_state.matrices["lda_names"]
         )
@@ -301,7 +317,11 @@ if st.button("🧪 Check stability"):
             doc_labels=st.session_state.doc_labels, progress_callback=_cb)
     progress.empty()
     st.session_state.stability = {"table": table, "details": details,
-                                  "method": stab_method}
+                                  "method": stab_method,
+                                  # 3.7: settings for the command
+                                  "ks": ks, "n_runs": int(n_runs),
+                                  "threshold": float(threshold),
+                                  "init": stab_init}
 
 if st.session_state.stability is not None:
     stab = st.session_state.stability
@@ -336,6 +356,16 @@ if st.session_state.stability is not None:
             st.download_button("⬇ PNG", buf.getvalue(),
                                file_name=f"{stab['method'].lower()}_stability_over_k.png",
                                mime="image/png")
+    if "ks" in stab:
+        _ks = stab["ks"]
+        _a = ["--action", "stability", "--stability-method", stab["method"].lower(),
+              "--stability-ks", (f"{_ks[0]}-{_ks[-1]}" if len(_ks) > 1 else str(_ks[0])),
+              "--n-runs", str(stab["n_runs"]),
+              "--stability-threshold", repr(stab["threshold"]), "--seed", "0"]
+        if stab["method"] == "NMF":
+            _a += ["--init", stab["init"]]
+        command_box("stability", f"Stability of {stab['method']}, K = "
+                    f"{_ks[0]}–{_ks[-1]}, {stab['n_runs']} runs", "stability", _a)
 
 st.divider()
 
@@ -462,6 +492,11 @@ def _render_model_results(model_name: str, model_key: str, words_key: str):
         st.dataframe(sentences.head(50), use_container_width=True)
         download_csv(sentences, "nmf_best_sentences")
 
+    _m = model_name.lower()
+    _args = model_command_args(_m)
+    command_box(_m, f"{model_name} with {_args[1]} topics", _m,
+                ["--action", _m] + _args)
+
 
 if st.session_state.nmf_results or st.session_state.lda_results:
     st.markdown("### Results")
@@ -494,6 +529,9 @@ if st.session_state.nmf_results or st.session_state.lda_results:
                     "for NMF and LDA."
                 )
             else:
+                st.caption("ℹ️ The batch mode has no command for this comparison; "
+                           "it is computed from the top words of the two models "
+                           "(nmf_top_words.csv and lda_top_words.csv).")
                 top_n = 20
                 sim = np.zeros((n_nmf, n_lda))
                 for i in range(n_nmf):

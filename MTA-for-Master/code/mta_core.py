@@ -2650,8 +2650,11 @@ def plot_axis_anova_boxplots(
             per_group.append(values[mask])
 
         bp = ax.boxplot(per_group, patch_artist=True, widths=0.5,
-                         labels=[str(g) for g in kept],
                          medianprops=dict(color="black", linewidth=1.5))
+        # 3.7: tick labels set separately — matplotlib 3.11 removed the
+        # boxplot argument labels= (renamed tick_labels= in 3.9)
+        ax.set_xticks(range(1, len(kept) + 1))
+        ax.set_xticklabels([str(g) for g in kept])
         for patch, g in zip(bp["boxes"], kept):
             patch.set_facecolor(color_map[g])
             patch.set_alpha(0.6)

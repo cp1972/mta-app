@@ -27,6 +27,8 @@ from shared import (
     download_png_via_matplotlib,
     paired_color_range,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 init_session_state()
@@ -75,6 +77,13 @@ def _render_evolution(model_name: str, doctopic):
     st.markdown("**Rolling-mean table** (sorted documents × topics)")
     st.dataframe(rm.style.format("{:.3f}"), use_container_width=True)
     download_csv(rm, f"{model_name.lower()}_rolling_mean")
+    _m = model_name.lower()
+    command_box(f"evolution_{model_name}",
+                f"Topic evolution ({model_name}), window {window}", f"evolution-{_m}",
+                ["--action", "evolution", "--model", _m, "--window", str(int(window))]
+                + model_command_args(_m),
+                notes=["The batch mode also writes the yearly aggregation when "
+                       "the file names start with a year."])
 
     # --- Chart with topic selector (consistent with page 2) ---
     st.markdown("**Chart: rolling mean of topic weights per document**")

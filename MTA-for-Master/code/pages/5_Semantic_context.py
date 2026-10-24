@@ -27,6 +27,7 @@ from shared import (
     download_csv,
     download_figure,
     get_chart_language,
+    command_box,
 )
 
 init_session_state()
@@ -519,3 +520,31 @@ else:
                 "use it to copy that subset of files into a separate folder "
                 "and run MTA again on the sub-corpus."
             )
+
+
+# =============================================================================
+# The analysis as a batch command (3.7)
+# =============================================================================
+
+st.divider()
+_a = ["--action", "semantic", "--words", ",".join(found_words),
+      "--embedding-method", "word2vec" if use_w2v else "cooccurrence",
+      "--embedding-window", str(int(window)),
+      "--embedding-min-count", str(int(min_count)),
+      "--embedding-dims", str(int(n_dims)),
+      "--n-similar", str(int(n_neighbours)),
+      "--cloud-neighbours", str(int(cloud_neighbours))]
+if globals().get("max_labels") is not None:
+    _a += ["--max-labels-per-cluster", str(int(max_labels))]
+_notes = []
+if globals().get("threshold") is not None:
+    _a += ["--best-docs-threshold", repr(float(threshold))]
+else:
+    _notes.append("Best documents: the batch mode lists all documents with "
+                  "their mean weight.")
+if use_w2v:
+    _notes.append("Word2Vec is trained with two parallel threads; its vectors, "
+                  "and thus the similar words, can differ slightly from run to "
+                  "run. Co-Occurrence + PCA is exactly reproducible.")
+command_box("semantic", f"Semantic context: {', '.join(found_words)}",
+            "semantic", _a, notes=_notes)

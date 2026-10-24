@@ -25,6 +25,8 @@ from shared import (
     require_model,
     download_csv,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 init_session_state()
@@ -145,6 +147,8 @@ else:
     if csv_file is None:
         st.info("Please upload a CSV to continue.")
         st.stop()
+    if "GROUPS" not in st.session_state.cmd_paths_edited:   # 3.7: for the commands
+        st.session_state.cmd_paths["GROUPS"] = csv_file.name
 
     # Save to temp path so mta_core can read it
     import tempfile, os
@@ -408,3 +412,30 @@ st.caption(
     "circles are individual documents. To download as PNG: click the "
     "**⋯** menu at the top-right of the chart."
 )
+
+
+# =============================================================================
+# The analysis as a batch command (3.7)
+# =============================================================================
+
+st.divider()
+import mta_commands as _mc
+_m = model_choice.lower()
+_a = ["--action", "compare-groups", "--model", _m]
+if method.startswith("From filenames"):
+    _a += ["--groups-from", "filenames", "--group-position", str(int(position)),
+           "--group-separator", separator]
+    _what = f"position {int(position)}"
+else:
+    _a += ["--groups-from", "csv", "--groups-csv", _mc.GROUPS]
+    _what = f"CSV column {grouping_name}"
+_notes = []
+if method.startswith("From uploaded CSV"):
+    _notes.append("With a CSV, the batch mode analyses every group column of "
+                  f"the file, the column {grouping_name} among them.")
+if abs(float(alpha) - 0.05) > 1e-9:
+    _notes.append(f"α = {alpha:.3f} only changes the highlighting here; the batch "
+                  "mode reports all p-values and draws box plots for topics with "
+                  "a BH-corrected Welch p < 0.05.")
+command_box(f"groups_{_m}", f"Group comparison ({model_choice}), {_what}",
+            f"groups-{_m}", _a + model_command_args(_m), notes=_notes)

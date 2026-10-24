@@ -17,6 +17,8 @@ from shared import (
     require_model,
     download_csv,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 # Page config is handled centrally by streamlit_app.py + st.navigation.
@@ -221,6 +223,13 @@ def _render(model_name: str, topicwords, feature_names, term_doc_matrix):
             "💡 To download as PNG: click the **⋯** menu at the top-right "
             "of the chart, then **Save as PNG**."
         )
+
+
+    _m = model_name.lower()
+    command_box(f"word_weights_{model_name}",
+                f"Word weights ({model_name}): {', '.join(words)}", f"word-weights-{_m}",
+                ["--action", "word-weights", "--model", _m,
+                 "--words", ",".join(words)] + model_command_args(_m))
 
 
 # =============================================================================

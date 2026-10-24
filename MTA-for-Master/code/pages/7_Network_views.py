@@ -24,6 +24,8 @@ from shared import (
     require_model,
     download_figure,
     get_chart_language,
+    command_box,
+    model_command_args,
 )
 
 init_session_state()
@@ -161,8 +163,9 @@ with tab_doc:
         ),
     ) / 100.0
 
-    if st.button("🖼️ Generate topic↔document graph", type="primary",
-                 key="gen_doc"):
+    _gen_doc = st.button("🖼️ Generate topic↔document graph", type="primary",
+                     key="gen_doc")
+    if _gen_doc:
         with st.spinner("Computing layout with ForceAtlas2…"):
             fig = mtanet.plot_topic_document_network(
                 doctopic=doctopic,
@@ -176,6 +179,13 @@ with tab_doc:
         download_figure(fig,
                         name=f"network_{method.lower()}_topic_document")
         st.session_state["_last_fig_doc"] = fig
+    command_box(f"network_doc_{method}", f"Network topics ↔ documents ({method})",
+                f"network-doc-{method.lower()}",
+                ["--action", "network", "--network-method", method.lower()]
+                 + (["--emphasize-differences"] if emphasize else [])
+                 + model_command_args(method.lower())
+                + ["--network-kind", "doc", "--network-min-edge", repr(float(min_edge_doc))],
+                log=_gen_doc)
 
 
 # ----------------- Tab 2: topic ↔ words --------------------------------------
@@ -195,8 +205,9 @@ with tab_word:
         ),
     )
 
-    if st.button("🖼️ Generate topic↔word graph", type="primary",
-                 key="gen_word"):
+    _gen_word = st.button("🖼️ Generate topic↔word graph", type="primary",
+                     key="gen_word")
+    if _gen_word:
         with st.spinner("Computing layout with ForceAtlas2…"):
             fig = mtanet.plot_topic_word_network(
                 topicwords=topicwords,
@@ -211,6 +222,13 @@ with tab_word:
         download_figure(fig,
                         name=f"network_{method.lower()}_topic_words")
         st.session_state["_last_fig_word"] = fig
+    command_box(f"network_word_{method}", f"Network topics ↔ words ({method})",
+                f"network-word-{method.lower()}",
+                ["--action", "network", "--network-method", method.lower()]
+                 + (["--emphasize-differences"] if emphasize else [])
+                 + model_command_args(method.lower())
+                + ["--network-kind", "word", "--network-top-n", str(int(top_n_word))],
+                log=_gen_word)
 
 
 # ----------------- Tab 3: combined -------------------------------------------
@@ -234,8 +252,9 @@ with tab_comb:
             key="comb_min_edge",
         ) / 100.0
 
-    if st.button("🖼️ Generate combined graph", type="primary",
-                 key="gen_comb"):
+    _gen_comb = st.button("🖼️ Generate combined graph", type="primary",
+                     key="gen_comb")
+    if _gen_comb:
         with st.spinner("Computing layout with ForceAtlas2…"):
             fig = mtanet.plot_combined_network(
                 doctopic=doctopic,
@@ -253,6 +272,14 @@ with tab_comb:
         download_figure(fig,
                         name=f"network_{method.lower()}_combined")
         st.session_state["_last_fig_comb"] = fig
+    command_box(f"network_comb_{method}", f"Network combined ({method})",
+                f"network-combined-{method.lower()}",
+                ["--action", "network", "--network-method", method.lower()]
+                 + (["--emphasize-differences"] if emphasize else [])
+                 + model_command_args(method.lower())
+                + ["--network-kind", "combined", "--combined-top-n", str(int(top_n_comb)),
+                   "--combined-min-edge", repr(float(min_edge_comb))],
+                log=_gen_comb)
 
 
 # =============================================================================

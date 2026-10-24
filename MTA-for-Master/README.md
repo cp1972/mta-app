@@ -75,6 +75,9 @@ folder, run for example:
 
 Outputs (CSV, JSON, PDF, PNG) are written to a timestamped folder. Pick
 option **[3]** from the launcher menu to see the full list of arguments.
+Since 3.7 the app shows the command for every analysis and saves a
+whole session as a script — see
+[From clicks to a script](#from-clicks-to-a-script-commands-and-session-log-new-in-37).
 
 ## Your first analyses
 
@@ -132,6 +135,49 @@ report documents below the threshold as uncertain. In batch mode:
 
 `--init random --seed 7` (NMF) or `--seed 7` (LDA) run any other action
 from a chosen starting point.
+
+## From clicks to a script: commands and session log (new in 3.7)
+
+Every analysis in the app has an exact counterpart in the batch mode.
+Under each result, the expander **🧾 As command (batch mode)** shows the
+command that reproduces it with the settings you chose — for Mac/Linux
+and for Windows, with a copy button. Run it in a terminal from the
+`MTA-for-Master` folder (on Windows in the Command Prompt, `cmd`; in
+PowerShell, type `cmd` first or run the downloaded `.bat` script).
+
+The app also keeps a **session log**, as Stata's log or R's history do:
+every analysis you compute is written to it as a command. In the
+sidebar, under **🧾 Session log**:
+
+1. open **Paths and logged analyses** and enter the folder of your
+   `.txt` files and your stopword file (the app knows the names of the
+   uploaded files, but not the folder they came from);
+2. download the log as a script — **.sh** for Mac/Linux or **.bat** for
+   Windows (the same buttons are also under each command);
+3. save the script in the `MTA-for-Master` folder and run it
+   (`bash MTA_session_….sh`, or double-click the `.bat`). Each command
+   writes its results to its own folder in `MTA-Results/`
+   (`01_nmf`, `02_word-weights-nmf`, …).
+
+So you can explore in the app, then keep the analysis you prefer as a
+script: delete the commands you do not need, change a setting (another
+number of topics, another seed), and run it again — on the same corpus
+or on a new one. `python code/MTA_v3.py --help` lists all options.
+
+Good to know:
+
+- Each command is complete: it repeats the corpus, the matrices and the
+  topic model it builds on, because the batch mode recomputes them.
+- Since 3.7 the app sorts uploaded files by name, as the batch mode
+  does. This matters for LDA, whose result depends on the order of the
+  documents.
+- Where the batch mode does something slightly differently, a note
+  under the command says so (for example: Word2Vec is not exactly
+  reproducible; with a CSV of groups, the batch mode analyses every
+  column of the file). The NMF↔LDA comparison on page 2 has no command;
+  it is computed from the two tables of top words.
+- Figures made by the batch mode can look slightly different from the
+  app's interactive charts; the tables are the same.
 
 ## The Network views page
 

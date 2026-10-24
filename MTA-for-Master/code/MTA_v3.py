@@ -291,6 +291,14 @@ def _fit_lda(args, matrices):
     return mta.run_lda(matrices["lda_matrix"], args.n_topics, seed=seed)
 
 
+def _fit_model(args, matrices):
+    """NMF or LDA as chosen by --model (3.7; default nmf as before).
+    Returns (result, vocabulary, term-document matrix of that model)."""
+    if getattr(args, "model", "nmf") == "lda":
+        return _fit_lda(args, matrices), matrices["lda_names"], matrices["lda_matrix"]
+    return _fit_nmf(args, matrices), matrices["tf_names"], matrices["tf_matrix"]
+
+
 def _parse_ks(spec, default_k):
     """'4-6' -> [4,5,6]; '4,6,8' -> [4,6,8]; None -> [default_k]."""
     if not spec:
@@ -497,23 +505,24 @@ def _plot_yearly_evolution(
 def _action_evolution(args, matrices, labels,
                       output_dir, csv_json_formats, plot_formats):
     """Topic evolution through texts — needs NMF or LDA result."""
-    # We need a model. If neither was run before in this batch, run NMF.
-    print(f"  Computing NMF for evolution (k={args.n_topics})…")
-    res = _fit_nmf(args, matrices)
+    # NMF unless --model lda (3.7)
+    model = getattr(args, "model", "nmf")
+    print(f"  Computing {model.upper()} for evolution (k={args.n_topics})…")
+    res, _, _ = _fit_model(args, matrices)
     rm = mta.rolling_mean_distribution(
         res["doctopic"], labels, window=args.window,
     )
-    save_dataframe(rm, "nmf_rolling_mean", output_dir, csv_json_formats)
+    save_dataframe(rm, f"{model}_rolling_mean", output_dir, csv_json_formats)
     fig = _plot_rolling_mean(rm, language=args.language)
-    save_figure(fig, "nmf_rolling_mean", output_dir, plot_formats)
+    save_figure(fig, f"{model}_rolling_mean", output_dir, plot_formats)
 
     # Yearly aggregation (only if filenames look like YYYY-...)
     yearly, bad = mta.yearly_topic_evolution(rm)
     if not yearly.empty:
-        save_dataframe(yearly, "nmf_yearly_evolution",
+        save_dataframe(yearly, f"{model}_yearly_evolution",
                        output_dir, csv_json_formats)
         fig = _plot_yearly_evolution(yearly, language=args.language)
-        save_figure(fig, "nmf_yearly_evolution", output_dir, plot_formats)
+        save_figure(fig, f"{model}_yearly_evolution", output_dir, plot_formats)
         print(f"  ✓ Evolution complete ({len(yearly)} years detected, "
               f"{len(bad)} filenames without year)")
     else:
@@ -599,19 +608,20 @@ def _action_word_weights(args, matrices, labels,
         print(f"  ℹ Note: the words×documents heatmap may take a few "
               f"seconds to render with {n_docs} documents.")
 
-    # Need an NMF model to get topicwords
-    print(f"  Running NMF (k={args.n_topics})…")
-    res = _fit_nmf(args, matrices)
+    # NMF (TF-IDF weights in documents) unless --model lda (Count weights), 3.7
+    model = getattr(args, "model", "nmf")
+    print(f"  Running {model.upper()} (k={args.n_topics})…")
+    res, vocab, term_doc = _fit_model(args, matrices)
 
     df_topics, missing_topics = mta.words_weight_per_topic(
-        res["topicwords"], matrices["tf_names"], word_list,
+        res["topicwords"], vocab, word_list,
     )
     df_docs, missing_docs = mta.words_weight_per_document(
-        matrices["tf_matrix"], matrices["tf_names"], labels, word_list,
+        term_doc, vocab, labels, word_list,
     )
 
     if missing_topics:
-        print(f"  ⚠ Words not in NMF vocabulary: {missing_topics}")
+        print(f"  ⚠ Words not in {model.upper()} vocabulary: {missing_topics}")
 
     save_dataframe(df_topics, "word_weights_topics",
                    output_dir, csv_json_formats)
@@ -686,20 +696,32 @@ def _action_semantic(args, matrices, corpus_wo, labels,
                   "--embedding-method cooccurrence", file=sys.stderr)
             return
         tokenized = mta.tokenize_for_cooccurrence(corpus_wo)
-        model = Word2Vec(tokenized, vector_size=100, window=5,
-                         min_count=2, workers=2, sample=1e-5, epochs=5)
+        model = Word2Vec(tokenized, vector_size=args.embedding_dims,
+                         window=args.embedding_window,
+                         min_count=args.embedding_min_count, workers=2,
+                         sample=1e-5, epochs=5)
         embeddings = {w: model.wv[w].copy() for w in model.wv.index_to_key}
     else:
         print("  Computing co-occurrence embeddings…")
         embeddings, _ = mta.build_cooccurrence_embeddings(
-            corpus_wo, window=5, min_count=2, n_dims=100,
+            corpus_wo, window=args.embedding_window,
+            min_count=args.embedding_min_count, n_dims=args.embedding_dims,
         )
+
+    # 3.7: like the app, continue only with the words that have a vector
+    missing = [w for w in word_list if w not in embeddings]
+    if missing:
+        print(f"  ⚠ Words not in the vocabulary (skipped): {missing}")
+    word_list = [w for w in word_list if w in embeddings]
+    if not word_list:
+        print("  ✗ None of the words is in the vocabulary", file=sys.stderr)
+        return
 
     # Similar words
     rows = []
     similar_map = {}
     for w in word_list:
-        sims = mta.most_similar_words(embeddings, w, topn=10)
+        sims = mta.most_similar_words(embeddings, w, topn=args.n_similar)
         similar_map[w] = [s[0] for s in sims]
         for rank, (sw, score) in enumerate(sims, start=1):
             rows.append({"Query word": w, "Rank": rank,
@@ -710,7 +732,7 @@ def _action_semantic(args, matrices, corpus_wo, labels,
 
     # 2D cloud
     df_cloud = mta.pca_project_word_clusters(
-        embeddings, word_list, neighbours_per_seed=50,
+        embeddings, word_list, neighbours_per_seed=args.cloud_neighbours,
     )
     save_dataframe(df_cloud, "semantic_cloud_coordinates",
                    output_dir, csv_json_formats)
@@ -726,6 +748,7 @@ def _action_semantic(args, matrices, corpus_wo, labels,
     df_best, _ = mta.best_documents_for_words(
         matrices["tf_matrix"], matrices["tf_names"], labels,
         word_list, similar_map,
+        min_mean_weight=args.best_docs_threshold,
     )
     save_dataframe(df_best, "semantic_best_documents",
                    output_dir, csv_json_formats)
@@ -834,9 +857,9 @@ def _action_compare_groups(args, matrices, labels,
     significantly between groups (Welch's t-test + Mann-Whitney U,
     with Benjamini-Hochberg correction).
     """
-    # Need an NMF model for the topic distribution
-    print(f"  Running NMF (k={args.n_topics}) for distribution…")
-    res = _fit_nmf(args, matrices)
+    # NMF unless --model lda (3.7)
+    print(f"  Running {getattr(args, 'model', 'nmf').upper()} (k={args.n_topics}) for distribution…")
+    res, _, _ = _fit_model(args, matrices)
     distribution = mta.topic_distribution_per_doc(res["doctopic"], labels)
 
     # Define groups
@@ -1041,9 +1064,12 @@ def _action_network(args, matrices, labels,
 
     if "combined" in kinds:
         # Use smaller top_n for combined view to keep it readable
-        comb_top_n = min(25, top_n)
+        comb_top_n = (args.combined_top_n if getattr(args, "combined_top_n", None)
+                      is not None else min(25, top_n))
+        comb_min_edge = (args.combined_min_edge if getattr(args, "combined_min_edge", None)
+                         is not None else max(min_edge, 0.20))
         print(f"  Rendering combined network (top {comb_top_n} words "
-              f"+ docs, min_edge={max(min_edge, 0.20):.0%})…")
+              f"+ docs, min_edge={comb_min_edge:.0%})…")
         fig = mtanet.plot_combined_network(
             doctopic=doctopic,
             topicwords=topicwords,
@@ -1051,7 +1077,7 @@ def _action_network(args, matrices, labels,
             vocab=vocab,
             topic_names=topic_names,
             top_n_words=comb_top_n,
-            min_doc_weight_pct=max(min_edge, 0.20),
+            min_doc_weight_pct=comb_min_edge,
             title=f"Topics + Documents + Top-words "
                   f"({title_method}, K={args.n_topics})",
             emphasize_differences=emph,
@@ -1492,6 +1518,27 @@ def build_parser() -> argparse.ArgumentParser:
                         "other points are still drawn but unlabeled. Raise "
                         "this to label more words on sparse corpora; the "
                         "full word list is always saved to the CSV/JSON.")
+    # --- Semantic context (3.7: the settings of the app) -------------------
+    p.add_argument("--embedding-window", type=int, default=5,
+                   help="Semantic action: context window of the embeddings "
+                        "(default: 5).")
+    p.add_argument("--embedding-min-count", type=int, default=2,
+                   help="Semantic action: minimum word frequency for the "
+                        "embeddings (default: 2).")
+    p.add_argument("--embedding-dims", type=int, default=100,
+                   help="Semantic action: embedding dimensions (default: 100).")
+    p.add_argument("--n-similar", type=int, default=10,
+                   help="Semantic action: similar words per query word "
+                        "(default: 10).")
+    p.add_argument("--cloud-neighbours", type=int, default=50,
+                   help="Semantic action: neighbours per query word in the "
+                        "2D cloud (default: 50).")
+    p.add_argument("--best-docs-threshold", type=float, default=None,
+                   help="Semantic action: keep only documents whose mean "
+                        "weight exceeds this value (default: all documents).")
+    p.add_argument("--model", choices=["nmf", "lda"], default="nmf",
+                   help="Topic model for evolution, word-weights and "
+                        "compare-groups (default: nmf).")
     p.add_argument("--window", type=int, default=2,
                    help="Rolling-mean window for evolution action (default: 2).")
     p.add_argument("--min-word-length", type=int, default=3,
@@ -1536,6 +1583,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "edge weight, relative to the document's max "
                         "topic weight, to display in the topic↔document "
                         "graph (default: 0.10 = 10%%).")
+    p.add_argument("--combined-top-n", type=int, default=None,
+                   help="For --action network: top-N words per topic in the "
+                        "combined graph (default: --network-top-n, at most 25).")
+    p.add_argument("--combined-min-edge", type=float, default=None,
+                   help="For --action network: minimum document edge weight "
+                        "in the combined graph (default: --network-min-edge, "
+                        "at least 0.20).")
     p.add_argument("--emphasize-differences", action="store_true",
                    help="For --action network: amplify visual size "
                         "differences between topic nodes. Useful on "

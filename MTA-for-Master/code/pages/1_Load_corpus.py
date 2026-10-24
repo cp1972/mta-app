@@ -90,6 +90,9 @@ with col2:
     )
 
 if text_files:
+    # 3.7: documents in the order of their names, as the batch mode reads
+    # them — the LDA result depends on the order of the documents.
+    text_files = sorted(text_files, key=lambda f: f.name)
     total_size = sum(getattr(f, "size", 0) for f in text_files)
     st.success(
         f"📄 **{len(text_files):,} text file(s) loaded** "
@@ -116,6 +119,12 @@ if text_files and stop_file:
     st.session_state.raw_texts = raw_texts
     st.session_state.doc_labels = doc_labels
     st.session_state.stopwords = stopwords
+    st.session_state.corpus_settings = {        # 3.7: for the commands
+        "min_word_length": int(min_word_length),
+        "file_names": list(doc_labels),
+        "stopwords_name": stop_file.name,
+        "n_stopwords": len(stopwords),
+    }
 
     st.success(
         f"✓ Corpus loaded: **{len(raw_texts):,} documents**, "
@@ -191,10 +200,15 @@ else:
                     min_df=min_df, max_df=max_df,
                 )
                 st.session_state.matrices = m
+                st.session_state.matrix_settings = {   # 3.7: for the commands
+                    "min_word_length": int(min_word_length),
+                    "min_df": min_df, "max_df": max_df,
+                }
                 # Invalidate downstream results, since the matrices changed
                 st.session_state.metrics = None
                 st.session_state.nmf_results = None
                 st.session_state.lda_results = None
+                st.session_state.stability = None      # 3.7: built on the old matrices
                 st.success(
                     f"✓ Matrices built. Vocabulary kept: "
                     f"**{len(m['tf_names']):,} words**."
