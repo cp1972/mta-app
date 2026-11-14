@@ -275,6 +275,52 @@ def preprocess_corpus(
 # 2. TF-IDF AND COUNT MATRICES
 # =============================================================================
 
+# 3.8: limits for large corpora. Below them MTA computes exactly as before.
+# DENSE_MAX_CELLS: the dense TF-IDF copy (documents x words) is only built
+#   when it has at most this many cells (about 400 MB in float64).
+# COPHENET_MAX_DOCS: the cophenetic correlation needs all pairwise distances
+#   between documents; above this number it is computed on a random sample
+#   of documents (fixed seed), which keeps memory linear in the corpus size.
+DENSE_MAX_CELLS = 50_000_000
+COPHENET_MAX_DOCS = 5_000
+COPHENET_SAMPLE_SEED = 0
+
+
+def cophenet_corr(doctopic: np.ndarray,
+                  max_docs: int = COPHENET_MAX_DOCS,
+                  seed: int = COPHENET_SAMPLE_SEED):
+    """Ward linkage and cophenetic correlation of a document-topic matrix.
+
+    For corpora above `max_docs` documents both are computed on a random
+    sample of `max_docs` documents (fixed seed), since the full pairwise
+    distance matrix grows with the square of the corpus (3.8). Returns
+    (linkage, coefficient, number of documents used).
+    """
+    doctopic = np.asarray(doctopic)
+    n = doctopic.shape[0]
+    if max_docs and n > max_docs:
+        idx = np.sort(np.random.default_rng(seed).choice(n, max_docs, replace=False))
+        doctopic = doctopic[idx]
+    link = linkage(doctopic, 'ward')
+    return link, cophenet(link, pdist(doctopic))[0], doctopic.shape[0]
+
+
+def dense_sample(tf_matrix, max_cells: int = DENSE_MAX_CELLS,
+                 seed: int = COPHENET_SAMPLE_SEED) -> np.ndarray:
+    """Dense TF-IDF for the cross-validation metrics (3.8).
+
+    The full dense matrix when it is small enough; otherwise a random
+    sample of documents (fixed seed) whose dense matrix stays within
+    `max_cells`.
+    """
+    n_docs, n_words = tf_matrix.shape
+    if n_docs * n_words <= max_cells:
+        return np.asarray(tf_matrix.todense())
+    keep = max(2, max_cells // max(1, n_words))
+    idx = np.sort(np.random.default_rng(seed).choice(n_docs, keep, replace=False))
+    return np.asarray(tf_matrix[idx].todense())
+
+
 def build_matrices(
     corpus_wo: List[str],
     stopwords: List[str],
@@ -293,10 +339,13 @@ def build_matrices(
     dict with the following keys:
         tf_matrix     : sparse TF-IDF matrix for NMF
         tf_names      : feature names (words)
-        dense_a       : dense TF-IDF matrix (np.array) for KMeans
+        dense_a       : dense TF-IDF matrix (np.array) for KMeans; for corpora
+                        above DENSE_MAX_CELLS a dense sample of documents (3.8)
         lda_matrix    : sparse Count matrix for LDA
         lda_names     : feature names (words) for LDA
-        df_tfidf      : pandas TF-IDF DataFrame (documents x words), for inspection
+        df_tfidf      : pandas TF-IDF DataFrame (documents x words), for inspection;
+                        sparse for corpora above DENSE_MAX_CELLS (3.8)
+        dense_is_sample : True when dense_a is a sample of documents (3.8)
     """
     stopwords = normalize_stopwords(stopwords)   # 3.6: sklearn compares lowercased tokens
     tfidf_vec = TfidfVectorizer(
@@ -312,12 +361,17 @@ def build_matrices(
 
     tf_matrix = tfidf_vec.fit_transform(corpus_wo)
     tf_names = tfidf_vec.get_feature_names_out()
-    dense_a = np.asarray(tf_matrix.todense())
+    # 3.8: the dense copy only as long as it fits (see DENSE_MAX_CELLS)
+    dense_is_sample = tf_matrix.shape[0] * tf_matrix.shape[1] > DENSE_MAX_CELLS
+    dense_a = dense_sample(tf_matrix)
 
     lda_matrix = lda_vec.fit_transform(corpus_wo)
     lda_names = lda_vec.get_feature_names_out()
 
-    df_tfidf = pd.DataFrame(dense_a, columns=tf_names)
+    if dense_is_sample:
+        df_tfidf = pd.DataFrame.sparse.from_spmatrix(tf_matrix, columns=tf_names)
+    else:
+        df_tfidf = pd.DataFrame(dense_a, columns=tf_names)
 
     return {
         "tf_matrix": tf_matrix,
@@ -326,6 +380,7 @@ def build_matrices(
         "lda_matrix": lda_matrix,
         "lda_names": lda_names,
         "df_tfidf": df_tfidf,
+        "dense_is_sample": dense_is_sample,
     }
 
 
@@ -385,8 +440,7 @@ def compute_topic_metrics(
     for idx, i in enumerate(ks):
         nmf = decomposition.NMF(n_components=i, random_state=1, init='nndsvd', max_iter=400)
         doctopic = nmf.fit_transform(tf_matrix)
-        link = linkage(doctopic, 'ward')
-        coph_corr_nmf.append(cophenet(link, pdist(doctopic))[0])
+        coph_corr_nmf.append(cophenet_corr(doctopic)[1])
         if progress_callback:
             progress_callback(len(ks) + idx + 1, len(ks) * 3, "NMF Cophenet")
 
@@ -398,8 +452,7 @@ def compute_topic_metrics(
             learning_offset=50., random_state=100, batch_size=128,
         )
         doctopic_lda = lda.fit_transform(lda_matrix)
-        link = linkage(doctopic_lda, 'ward')
-        coph_corr_lda.append(cophenet(link, pdist(doctopic_lda))[0])
+        coph_corr_lda.append(cophenet_corr(doctopic_lda)[1])
         if progress_callback:
             progress_callback(2 * len(ks) + idx + 1, len(ks) * 3, "LDA Cophenet")
 
@@ -476,8 +529,7 @@ def run_nmf(tf_matrix, n_topics: int, init: str = DEFAULT_NMF_INIT,
                             init=init, max_iter=max_iter)
     doctopic = nmf.fit_transform(tf_matrix)
     topicwords = nmf.components_
-    link = linkage(doctopic, 'ward')
-    coph = cophenet(link, pdist(doctopic))[0]
+    link, coph, _ = cophenet_corr(doctopic)
     return {
         "model": nmf,
         "doctopic": doctopic,
@@ -500,8 +552,7 @@ def run_lda(lda_matrix, n_topics: int, seed: int = DEFAULT_LDA_SEED) -> Dict:
     )
     doctopic = lda.fit_transform(lda_matrix)
     topicwords = lda.components_
-    link = linkage(doctopic, 'ward')
-    coph = cophenet(link, pdist(doctopic))[0]
+    link, coph, _ = cophenet_corr(doctopic)
     return {
         "model": lda,
         "doctopic": doctopic,
@@ -787,8 +838,13 @@ def topic_distribution_per_doc(
     """
     Normalize the topic weights within each document (sum = 1) and
     return a labelled DataFrame (documents x topics).
+
+    A document left without any word after cleaning has no topic weight;
+    its row stays at 0 instead of becoming NaN (3.8).
     """
-    norm = doctopic / np.sum(doctopic, axis=1, keepdims=True)
+    doctopic = np.asarray(doctopic, dtype=float)
+    sums = np.sum(doctopic, axis=1, keepdims=True)
+    norm = np.divide(doctopic, sums, out=np.zeros_like(doctopic), where=sums > 0)
     df = pd.DataFrame(
         norm,
         index=doc_labels,
@@ -797,9 +853,18 @@ def topic_distribution_per_doc(
     return df
 
 
+EMPTY_TOPIC_LABEL = "none (empty document)"
+
+
 def dominant_topic_per_doc(distribution: pd.DataFrame) -> pd.DataFrame:
-    """For each document, return the dominant topic and its weight."""
-    dom = distribution.idxmax(axis=1)
+    """For each document, return the dominant topic and its weight.
+
+    A document without any topic weight (empty after cleaning) gets the
+    label EMPTY_TOPIC_LABEL and weight 0 (3.8); before, idxmax failed on it.
+    """
+    empty = distribution.sum(axis=1) <= 0
+    dom = distribution.where(~empty, 0).idxmax(axis=1).astype(object)
+    dom[empty] = EMPTY_TOPIC_LABEL
     weight = distribution.max(axis=1)
     return pd.DataFrame({
         "Document": distribution.index,

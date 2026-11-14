@@ -1,5 +1,26 @@
 # Major changes in versions of MTA
 
+## MTA version 3.8 -- November 2026 -- Bug-fix release
+
+Large corpora. Testing MTA on about 18,600 short survey answers (median 18 words) showed three problems: the cross-validation and the NMF ran out of memory on a computer with 7 GB, and an analysis stopped with "Encountered all NA values". **With corpora below the new limits MTA computes exactly as before** (checked: all tables of NMF with cross-validation and of LDA identical on the demo corpus; the tests of 3.6 and 3.7 pass).
+
+### What was wrong (up to 3.7)
+
+  - **Empty documents.** A document that keeps no word after cleaning (only stopwords, or only words below `min_df`) has no topic weight. Its row in the topic distribution became NaN (division by zero), and the dominant topic per document failed with "Encountered all NA values", which stopped NMF and LDA.
+  - **Cophenetic correlation.** It needs all pairwise distances between documents and a hierarchical clustering of them: for 18,500 documents more than 170 million distances. The process was killed for lack of memory, after the topic model itself had been computed.
+  - **Dense TF-IDF.** The TF-IDF matrix was always converted to a dense table (twice: as an array and as a DataFrame) and written as `tfidf_matrix.csv`, for the corpus above about 800 MB of text.
+
+### What changed
+
+  - **Empty documents** keep a row of zeros in the topic distribution and get the dominant topic `none (empty document)` with weight 0. MTA no longer stops; the stability check already counted such documents apart (−1).
+  - **Cophenetic correlation on a sample.** Above 5,000 documents (`COPHENET_MAX_DOCS` in `mta_core.py`) the linkage and the cophenetic correlation are computed on a random sample of 5,000 documents with a fixed seed, so the result is reproducible. Below, nothing changes. The NMF and LDA themselves always use all documents.
+  - **Dense TF-IDF only as long as it fits.** Above 50 million cells (documents × words; `DENSE_MAX_CELLS`, about 400 MB) the dense matrix is not built; the cross-validation metrics (KMeans on the words) use a random sample of documents within that limit (fixed seed), the inspection table is kept sparse, and `tfidf_matrix.csv` is not written. MTA says so in a message. Below the limit, nothing changes.
+
+### Code
+
+  - `mta_core.py`: new `cophenet_corr()` and `dense_sample()`, constants `DENSE_MAX_CELLS`, `COPHENET_MAX_DOCS`, `COPHENET_SAMPLE_SEED`, `EMPTY_TOPIC_LABEL`; `build_matrices()` returns `dense_is_sample`. `MTA_v3.py`: `_save_tfidf()` replaces the two direct exports of the TF-IDF table.
+  - New test `code/test_large.py`: an empty document gets `none (empty document)` and a row of zeros; the cophenetic correlation of a small matrix is unchanged, that of a large one is computed on the sample; the dense sample stays within the limit.
+
 ## MTA version 3.7 -- October 2026 -- Minor release
 
 From clicks to a script. A user asked whether the commands behind the graphical interface could be recorded and exported, as in Stata or R, so that one can first experiment in the app and then keep the preferred analysis as syntax to reproduce it later. Up to 2.0, `MTA.py` wrote a log file of the inputs of an analysis, from which a script could be assembled by hand (see `archive/automate.md`). 3.7 goes further: every analysis of the app is translated into a command of the batch mode that reproduces it.

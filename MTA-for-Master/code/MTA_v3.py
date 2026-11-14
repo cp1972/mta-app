@@ -100,6 +100,23 @@ def save_dataframe(df: pd.DataFrame, name: str, output_dir: Path,
                    force_ascii=False, indent=2)
 
 
+
+def _save_tfidf(matrices, output_dir, formats):
+    """Export the TF-IDF matrix (documents x words).
+
+    3.8: for very large corpora (see mta_core.DENSE_MAX_CELLS) the full
+    table would run to several hundred MB of text; it is then skipped
+    with a message, and the analyses use the sparse matrix in memory.
+    """
+    if matrices.get("dense_is_sample"):
+        n_docs, n_words = matrices["tf_matrix"].shape
+        print(f"  ℹ TF-IDF table not written ({n_docs:,} documents × {n_words:,} words "
+              f"exceeds {mta.DENSE_MAX_CELLS:,} cells); cross-validation uses a "
+              f"sample of documents, the cophenetic correlation a sample of "
+              f"{mta.COPHENET_MAX_DOCS:,} documents.")
+        return
+    save_dataframe(matrices["df_tfidf"], "tfidf_matrix", output_dir, formats)
+
 def save_figure(fig: plt.Figure, name: str, output_dir: Path,
                 formats: set[str]) -> None:
     """Save figure to PDF and/or PNG. `formats` is a subset of {'pdf', 'png'}."""
@@ -201,9 +218,8 @@ def run_batch(args: argparse.Namespace) -> int:
     )
     print(f"  ✓ Vocabulary: {len(matrices['tf_names']):,} words")
 
-    # Save the corpus-level artefacts
-    save_dataframe(matrices["df_tfidf"], "tfidf_matrix",
-                   output_dir, csv_json_formats)
+    # Save the corpus-level artefacts (3.8: not for very large corpora)
+    _save_tfidf(matrices, output_dir, csv_json_formats)
 
     # Dispatch to the requested action.
     # Note: 'axis-projection' is NOT included in 'all' because it
@@ -1691,8 +1707,7 @@ def run_interactive() -> int:
 
     output_dir = prepare_output_dir(None)
     print(f"  Outputs will be written to {output_dir.resolve()}")
-    save_dataframe(matrices["df_tfidf"], "tfidf_matrix",
-                   output_dir, {"csv", "json"})
+    _save_tfidf(matrices, output_dir, {"csv", "json"})
 
     # Session state for the interactive menu (replaces original globals)
     session = {
