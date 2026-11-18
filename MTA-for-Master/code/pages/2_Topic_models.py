@@ -347,6 +347,9 @@ if st.session_state.stability is not None:
     st.dataframe(res["documents"].style.format({"Agreement": "{:.0%}"}),
                  use_container_width=True, hide_index=True)
     download_csv(res["documents"], f"{stab['method'].lower()}_stability_K{k_sel}_documents")
+    if "weights" in res:   # 3.9: topic weights per document, averaged over the aligned runs
+        st.markdown("**Documents: topic weights averaged over the runs (with standard deviation)**")
+        download_csv(res["weights"], f"{stab['method'].lower()}_stability_K{k_sel}_document_weights")
     with st.expander("Per-run details and PNG export"):
         st.dataframe(res["runs"], use_container_width=True, hide_index=True)
         if len(table) > 1:

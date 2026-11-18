@@ -1,5 +1,19 @@
 # Major changes in versions of MTA
 
+## MTA version 3.9 -- November 2026 -- Minor release
+
+Topic weights over the runs of the stability check. The stability check (3.5) fits the same model 20 times from different starting points, aligns the topics of each run with those of a reference run, and keeps for every document its consensus topic and the share of runs that give it this topic. The weights of the other topics were dropped. A document is often a mixture, and analyses that work with this mixture (for instance the share an actor gives to the topics of one domain, and how this share changes over time) need the weights, together with how much they vary from run to run. **All tables of 3.8 stay exactly the same** (checked on the demo corpus); there is one new table.
+
+### What changed
+
+  - **New table `nmf_stability_K{k}_document_weights`** (or `lda_…`): for every document the weight of every reference topic, averaged over the runs after their topics have been aligned, and its standard deviation over the runs (`Topic_k sd`). The weights of each run are first normalised to sum to 1 per document, so that runs are comparable. Empty documents keep zeros. The strongest mean weight is, for clear topics, the consensus topic; the standard deviation shows where the runs disagree.
+  - In the app (page Topic models, stability check) the table can be downloaded below the documents table.
+
+### Code
+
+  - `mta_core.topic_stability()` returns a new key `weights` (DataFrame: Document, Topic_0 … Topic_{K−1}, Topic_0 sd …). `MTA_v3.py --action stability` writes it as `{method}_stability_K{k}_document_weights`.
+  - New test `code/test_stability_weights.py`: one row per document, mean weights sum to 1, empty documents keep zeros, the strongest mean weight is the consensus topic, small spread for clear topics, reproducible, also for LDA.
+
 ## MTA version 3.8 -- November 2026 -- Bug-fix release
 
 Large corpora. Testing MTA on about 18,600 short survey answers (median 18 words) showed three problems: the cross-validation and the NMF ran out of memory on a computer with 7 GB, and an analysis stopped with "Encountered all NA values". **With corpora below the new limits MTA computes exactly as before** (checked: all tables of NMF with cross-validation and of LDA identical on the demo corpus; the tests of 3.6 and 3.7 pass).

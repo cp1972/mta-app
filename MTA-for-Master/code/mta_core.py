@@ -656,6 +656,11 @@ def topic_stability(
                     share of runs in which it is reproduced (similarity >= 0.8).
         runs      : DataFrame — per run: seed, mean topic similarity,
                     ARI of the document partition vs. the reference.
+        weights   : DataFrame — per document the weight of every reference
+                    topic, averaged over the runs after aligning their
+                    topics (each run's weights normalised to sum to 1 per
+                    document), and its standard deviation over the runs
+                    (3.9). Empty documents keep zeros.
         summary   : dict — the headline numbers of the four tables.
     """
     method = method.lower()
@@ -679,6 +684,8 @@ def topic_stability(
 
     assignments = np.full((n_runs, n_docs), -1, dtype=int)
     sims = np.zeros((n_runs, n_topics))
+    w_sum = np.zeros((n_docs, n_topics))      # 3.9: aligned topic weights per document
+    w_sq = np.zeros((n_docs, n_topics))
     run_rows = []
     for r in range(n_runs):
         seed = base_seed + r
@@ -688,6 +695,13 @@ def topic_stability(
         aligned = np.where(dom >= 0, mapping[np.maximum(dom, 0)], -1)
         assignments[r] = aligned
         sims[r, mapping] = sim
+        w = np.asarray(res["doctopic"], dtype=float)
+        tot = w.sum(axis=1, keepdims=True)
+        share = np.divide(w, tot, out=np.zeros_like(w), where=tot > 0)
+        al = np.zeros_like(share)
+        al[:, mapping] = share                  # column j of the run -> reference topic mapping[j]
+        w_sum += al
+        w_sq += al * al
         valid = (aligned >= 0) & (ref_dom >= 0)
         run_rows.append({
             "Run": r + 1, "Seed": seed,
@@ -726,6 +740,12 @@ def topic_stability(
         "Stable documents": [int(((cons == k) & stable).sum()) for k in range(n_topics)],
     })
     runs = pd.DataFrame(run_rows)
+    w_mean = w_sum / n_runs
+    w_sd = np.sqrt(np.maximum(w_sq / n_runs - w_mean ** 2, 0.0))
+    weights = pd.DataFrame(w_mean, columns=[f"Topic_{k}" for k in range(n_topics)])
+    for k in range(n_topics):
+        weights[f"Topic_{k} sd"] = w_sd[:, k]
+    weights.insert(0, "Document", doc_labels)
     assigned = ~np.isnan(agree)
     summary = {
         "method": method.upper(), "n_topics": n_topics, "n_runs": n_runs,
@@ -740,7 +760,7 @@ def topic_stability(
         "threshold": threshold,
     }
     return {"reference": reference, "documents": documents, "topics": topics,
-            "runs": runs, "summary": summary}
+            "runs": runs, "weights": weights, "summary": summary}
 
 
 def stability_over_k(

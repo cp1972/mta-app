@@ -45,7 +45,7 @@ GROUPS = "\x00GROUPS"
 OUTPUT = "\x00OUTPUT:"          # followed by the folder name of the step
 _VARS = {CORPUS: "CORPUS", STOPWORDS: "STOPWORDS", GROUPS: "GROUPS"}
 
-MTA_VERSION = "3.8"
+MTA_VERSION = "3.9"
 
 
 # =============================================================================

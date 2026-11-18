@@ -355,6 +355,8 @@ def _action_stability(args, matrices, labels,
                        f"{method}_stability_K{k}_topics", output_dir, csv_json_formats)
         save_dataframe(res["runs"].set_index("Run"),
                        f"{method}_stability_K{k}_runs", output_dir, csv_json_formats)
+        save_dataframe(res["weights"].set_index("Document"),        # 3.9
+                       f"{method}_stability_K{k}_document_weights", output_dir, csv_json_formats)
     if len(ks) > 1:
         fig = mta.plot_stability_over_k(table, language=args.language)
         save_figure(fig, f"{method}_stability_over_k", output_dir, plot_formats)
