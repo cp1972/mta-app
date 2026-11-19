@@ -18,6 +18,10 @@ Two stages for a residual topic. In corpora of many short or mixed documents a m
   - On the 41 854 prompts of the WildChat-1M sample of book chapter 12 (NMF, K = 5, residual Topic_0 with 57 % of the prompts, K2 = 6, 50 runs): stage 2, its documents, topics and weights and the assignment of the two-stage model are identical to those of the separate scripts used so far. The scripts had put the residual weight of the documents outside the residual topic on the first topic of stage 2 (there the generic topic, coded as form like the unrefined column, so the analyses built on it do not change) and dropped it for 9 prompts with no word in the vocabulary of stage 2; MTA keeps it in the unrefined column.
   - New test `code/test_refine.py`: a residual topic is found and recommended, the threshold can be changed, stage 2 has the vocabulary of the residual documents and finds the hidden themes, names of the merged topics, weights sum to 1 per document (empty documents keep zeros), the residual weight of documents outside the residual topic stays unrefined, stage-1 topics keep their weights, reproducible, also for LDA. The tests of 3.6 to 3.9.1 pass.
 
+### Also fixed
+
+  - **Topic evolution stopped with `StreamlitDuplicateElementKey`** when the yearly aggregation was shown. The same table is offered twice (below the table and in the export expander), and the key of a download button was its name and the second of the run: when both buttons were drawn within the same second, Streamlit stopped. Download buttons now get a running number in their key (`shared._dl_key`); the file names keep their time stamp. Present since the download buttons got time stamps, not caused by 3.10.
+
 ### Code
 
   - `mta_core`: `RESIDUAL_SHARE`, `residual_topics()`, `refinement_recommendation()`, `refine_residual()`, `merge_stages()`.

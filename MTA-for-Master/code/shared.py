@@ -17,6 +17,7 @@ Why a single module?
 
 import datetime
 import io
+import itertools
 
 import pandas as pd
 import streamlit as st
@@ -376,6 +377,17 @@ def command_log_sidebar() -> None:
 # DOWNLOAD BUTTONS
 # =============================================================================
 
+# 3.10: the key of a download button was its name and the second of the run, so
+# the same table offered twice on a page (topic evolution: below the table and
+# in the export expander) gave two buttons with the same key and Streamlit
+# stopped with StreamlitDuplicateElementKey. A running number makes every key
+# unique; the file name keeps its time stamp.
+_DL_COUNTER = itertools.count()
+
+
+def _dl_key(*parts) -> str:
+    return "dl_" + "_".join(str(p) for p in parts) + f"_{next(_DL_COUNTER)}"
+
 def download_csv(df: pd.DataFrame, name: str) -> None:
     """CSV download button for a DataFrame."""
     csv = df.to_csv(index=True).encode("utf-8")
@@ -385,7 +397,7 @@ def download_csv(df: pd.DataFrame, name: str) -> None:
         data=csv,
         file_name=f"{name}_{ts}.csv",
         mime="text/csv",
-        key=f"dl_{name}_{ts}",
+        key=_dl_key(name, ts),
     )
 
 
@@ -417,7 +429,7 @@ def download_figure(fig, name: str, formats: tuple = ("png", "pdf"),
                 data=buf,
                 file_name=f"{name}_{ts}.{fmt}",
                 mime=mime,
-                key=f"dl_{name}_{fmt}_{ts}",
+                key=_dl_key(name, fmt, ts),
             )
 
 
@@ -495,7 +507,7 @@ def download_png_via_matplotlib(
         data=buf,
         file_name=f"{name}_{ts}.png",
         mime="image/png",
-        key=f"dlpng_{name}_{ts}",
+        key=_dl_key("png", name, ts),
     )
 
 
