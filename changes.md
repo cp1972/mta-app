@@ -1,5 +1,14 @@
 # Major changes in versions of MTA
 
+## MTA version 3.9.1 -- November 2026 -- Bug-fix release
+
+**The cleaning of the texts could hang for hours on a single text.** The pattern that removes URLs repeated a repetition (`[^\s()<>]+` inside `(...)+`). When a URL was followed by a run of characters that cannot end a URL (`https://` and then 40 dots, commas or exclamation marks, as they occur in prompts sent to language models), the regular expression tried every way of splitting that run: each further character doubled the time. With 40 such characters one text took hours, and MTA seemed to do nothing. Found on a sample of 46 000 prompts of WildChat-4.8M.
+
+### What changed
+
+  - The pattern is written without nested repetition. It removes exactly the same URLs: the cleaned texts are identical on 41 854 prompts of WildChat-1M (789 of them with URLs) and on the demo corpus, and a URL followed by 40 000 such characters is now cleaned in milliseconds.
+  - New test `code/test_urls.py`: same result as before on ordinary texts, fast on pathological ones.
+
 ## MTA version 3.9 -- November 2026 -- Minor release
 
 Topic weights over the runs of the stability check. The stability check (3.5) fits the same model 20 times from different starting points, aligns the topics of each run with those of a reference run, and keeps for every document its consensus topic and the share of runs that give it this topic. The weights of the other topics were dropped. A document is often a mixture, and analyses that work with this mixture (for instance the share an actor gives to the topics of one domain, and how this share changes over time) need the weights, together with how much they vary from run to run. **All tables of 3.8 stay exactly the same** (checked on the demo corpus); there is one new table.

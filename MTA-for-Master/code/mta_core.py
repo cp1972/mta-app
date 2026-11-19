@@ -195,9 +195,13 @@ def _remove_digits(lst: List[str]) -> List[str]:
 
 
 def _remove_urls(lst: List[str]) -> List[str]:
+    # 3.9.1: the same URL pattern, written without nested repetition. The old form ([^\s()<>]+ inside (...)+)
+    # backtracked exponentially when a URL was followed by a run of excluded characters
+    # ("https://" + 40 dots or commas): one such text could stop the cleaning for hours.
+    # It removes exactly the same URLs.
     pattern = (r'''(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)'''
-               r'''(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+'''
-               r'''(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|'''
+               r'''(?:[^\s()<>]|\((?:[^\s()<>]|\([^\s()<>]+\))*\))+'''
+               r'''(?:\((?:[^\s()<>]|\([^\s()<>]+\))*\)|'''
                r'''[^\s`!()\[\]{};:'".,<>?«»""''])'''
                r''')''')
     return [re.sub(pattern, '', i) for i in lst]
