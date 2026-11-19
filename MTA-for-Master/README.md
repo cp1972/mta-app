@@ -136,6 +136,51 @@ report documents below the threshold as uncertain. In batch mode:
 `--init random --seed 7` (NMF) or `--seed 7` (LDA) run any other action
 from a chosen starting point.
 
+## A topic that holds most documents: two stages (new in 3.10)
+
+With many short or mixed documents (answers to a survey, prompts, posts),
+a model often has one topic that gathers most documents: those the other
+topics do not explain. Its words are the common words of the corpus
+(*make, use, please, …*), not a theme. MTA calls it a **residual topic**
+when it holds at least 40 % of the documents (the threshold can be
+changed).
+
+Below the stability results, MTA shows the share of documents of every
+topic and, when there is a residual topic, **recommends** refining it. It
+never does so on its own. The button **🔬 Refine the residual topic
+(stage 2)** fits a new model on the documents of the residual topic only,
+with their own vocabulary (same cleaning, `min_df` and `max_df`), and
+checks its stability for a range of K2, as in section 2.3. Choose K2 by
+the stability table; MTA then gives one set of topics from the two
+stages:
+
+- the topics of stage 1 keep their names (`Topic_2`, `Topic_3`, …);
+- the residual topic r is replaced by the topics of stage 2, named
+  `Topic_r.0`, `Topic_r.1`, …;
+- three tables: the topics (with their top words), the documents (topic
+  of the two-stage model, agreement, stable) and the weights of every
+  document on every topic with their standard deviation over the runs.
+  The weight of the residual topic is divided by the stage-2 weights of
+  the document. Documents outside the residual topic were not modelled
+  in stage 2: their (smaller) residual weight is the weight of the
+  common words, not a theme, and stays unrefined in the column
+  `Topic_r (not refined)` (column `Stage 2 weights`: `own` or
+  `not refined`). Treat it as a form, not as a topic of its own.
+
+MTA stops at two stages: a residual topic inside stage 2 is reported,
+not refined. In batch mode, `--action stability` prints the same
+recommendation, and
+
+```bash
+./.venv/bin/python code/MTA_v3.py --corpus PATH --stopwords PATH \
+    --action refine --n-topics 5 --stage2-ks 3-8 --n-runs 50
+```
+
+computes stage 1 with 5 topics, finds the residual topic (or takes the one
+given with `--residual-topics`), and writes stage 2 for K2 = 3 … 8 and the
+two-stage tables `nmf_refined_K5_<K2>_*` for each K2
+(`--residual-share 0.5` changes the threshold).
+
 ## From clicks to a script: commands and session log (new in 3.7)
 
 Every analysis in the app has an exact counterpart in the batch mode.

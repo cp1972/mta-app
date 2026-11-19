@@ -1,5 +1,28 @@
 # Major changes in versions of MTA
 
+## MTA version 3.10 -- November 2026 -- Minor release
+
+Two stages for a residual topic. In corpora of many short or mixed documents a model often has one topic that gathers most documents: those the other topics do not explain. Its words are the common words of the corpus, and it hides the themes below them. Choosing more topics does not help: the stability falls before the large topic splits. The remedy used in book chapter 12, and so far done with separate scripts, is a second model on the documents of that topic only, with their own vocabulary. MTA 3.10 does this itself, in two steps the user controls. **All tables of 3.9.1 stay exactly the same**; nothing is refined unless the user asks for it.
+
+### What changed
+
+  - **Residual topic.** A topic is residual when its consensus documents are at least 40 % of the documents with a topic (`RESIDUAL_SHARE`; in the app a field, in batch mode `--residual-share`). MTA shows the share of every topic and, when a topic is residual, **recommends** refining it. It never refines on its own.
+  - **Stage 2.** On request, a new model on the documents of the residual topic, with matrices built anew on them (same cleaning, `min_df`, `max_df`), checked for stability over a range of K2 like the model of stage 1 (same method, runs, seeds, threshold).
+  - **One set of topics from both stages.** The topics of stage 1 keep their names (`Topic_k`); the residual topic r is replaced by the topics of stage 2, `Topic_r.j` (with several residual topics `Topic_r1+r2.j`). Three tables: topics (stage, documents, stable documents, similarity, reproduction, top words), documents (stage-1 topic, topic of the two-stage model, stage, agreement, stable) and weights (mean and standard deviation over the runs). For the documents modelled in stage 2, the weight w_r of the residual topic is divided by their stage-2 shares a_j: w_r·a_j, standard deviation sqrt((w_r·sd(a_j))² + (sd(w_r)·a_j)²). Documents not modelled in stage 2 (outside the residual topic, or with no word left in its vocabulary) keep their residual weight unrefined in its own column `Topic_r (not refined)`: it is the weight of the common words of the corpus, not a theme, and giving it to the topics of stage 2 would blur the separation that stage 2 is meant to bring. Column `Stage 2 weights`: `own` or `not refined`.
+  - **Two stages, not more.** A residual topic inside stage 2 is reported (a warning in the app, a note in the batch output and `residual_inside` in the summary), not refined.
+  - **App** (page Topic models, below the stability check): table of the shares, the recommendation, the button **🔬 Refine the residual topic (stage 2)**, the stability of stage 2, the choice of K2, the three tables to download and the command of the batch mode.
+  - **Batch mode:** `--action stability` prints the recommendation and the command; new `--action refine` (`--n-topics` = K of stage 1, `--stage2-ks`, `--residual-topics`, `--residual-share`) writes `{method}_stage1_K{k}_topics`, `{method}_stage2_over_k`, `{method}_stage2_K{k2}_topics` and, for every K2, `{method}_refined_K{k}_{k2}_topics/_documents/_document_weights`, and `{method}_refine_summary.json`.
+
+### Checked
+
+  - On the 41 854 prompts of the WildChat-1M sample of book chapter 12 (NMF, K = 5, residual Topic_0 with 57 % of the prompts, K2 = 6, 50 runs): stage 2, its documents, topics and weights and the assignment of the two-stage model are identical to those of the separate scripts used so far. The scripts had put the residual weight of the documents outside the residual topic on the first topic of stage 2 (there the generic topic, coded as form like the unrefined column, so the analyses built on it do not change) and dropped it for 9 prompts with no word in the vocabulary of stage 2; MTA keeps it in the unrefined column.
+  - New test `code/test_refine.py`: a residual topic is found and recommended, the threshold can be changed, stage 2 has the vocabulary of the residual documents and finds the hidden themes, names of the merged topics, weights sum to 1 per document (empty documents keep zeros), the residual weight of documents outside the residual topic stays unrefined, stage-1 topics keep their weights, reproducible, also for LDA. The tests of 3.6 to 3.9.1 pass.
+
+### Code
+
+  - `mta_core`: `RESIDUAL_SHARE`, `residual_topics()`, `refinement_recommendation()`, `refine_residual()`, `merge_stages()`.
+  - `MTA_v3.py`: `--action refine`, `--residual-share`, `--residual-topics`, `--stage2-ks`.
+
 ## MTA version 3.9.1 -- November 2026 -- Bug-fix release
 
 **The cleaning of the texts could hang for hours on a single text.** The pattern that removes URLs repeated a repetition (`[^\s()<>]+` inside `(...)+`). When a URL was followed by a run of characters that cannot end a URL (`https://` and then 40 dots, commas or exclamation marks, as they occur in prompts sent to language models), the regular expression tried every way of splitting that run: each further character doubled the time. With 40 such characters one text took hours, and MTA seemed to do nothing. Found on a sample of 46 000 prompts of WildChat-4.8M.

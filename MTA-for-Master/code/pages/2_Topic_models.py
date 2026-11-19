@@ -370,6 +370,115 @@ if st.session_state.stability is not None:
         command_box("stability", f"Stability of {stab['method']}, K = "
                     f"{_ks[0]}–{_ks[-1]}, {stab['n_runs']} runs", "stability", _a)
 
+    # -------------------------------------------------------------------------
+    # 2.4 — RESIDUAL TOPIC: REFINE IN A SECOND STAGE (3.10)
+    # -------------------------------------------------------------------------
+    st.markdown(f"#### Residual topic (K = {k_sel})")
+    res_share = st.number_input(
+        "A topic is residual if it holds at least this share of the documents",
+        min_value=0.10, max_value=0.95, value=float(mta.RESIDUAL_SHARE), step=0.05,
+        key="residual_share",
+        help="A topic that gathers most documents usually holds what the other "
+             "topics do not explain: its words are the common words of the corpus. "
+             "MTA recommends refining it; it never does so on its own.")
+    rt = mta.residual_topics(res, res_share)
+    st.dataframe(rt.style.format({"Share": "{:.0%}"}), use_container_width=True,
+                 hide_index=True)
+    rec = mta.refinement_recommendation(res, res_share)
+    if rec is None:
+        st.success(f"No topic holds {res_share:.0%} of the documents or more: "
+                   "no residual topic. The model can be used as it is.")
+    else:
+        st.info("💡 " + rec["text"])
+        r1, r2 = st.columns(2)
+        with r1:
+            k2_range = st.slider("Numbers of topics in stage 2 (K2)", 2, 15, (3, 8),
+                                 key="k2_range")
+        with r2:
+            n_runs2 = st.number_input("Runs per K2", min_value=5, max_value=500,
+                                      value=int(stab["n_runs"]), step=5, key="n_runs2")
+        st.caption("Stage 2 fits a new model on the documents of the residual topic "
+                   "only, with their own vocabulary (same cleaning, min_df and max_df "
+                   "as the corpus), and checks its stability as above. MTA stops at "
+                   "two stages: a residual topic inside stage 2 is reported, not refined.")
+        if st.button("🔬 Refine the residual topic (stage 2)"):
+            progress2 = st.progress(0.0, text="Starting…")
+
+            def _cb2(i, total, label):
+                progress2.progress(min(1.0, i / total), text=f"Stage 2: {label} ({i}/{total})")
+
+            ms = st.session_state.get("matrix_settings") or {}
+            ks2 = list(range(k2_range[0], k2_range[1] + 1))
+            with st.spinner("Fitting stage 2…"):
+                ref = mta.refine_residual(
+                    st.session_state.corpus_wo, st.session_state.stopwords, res,
+                    rec["topics"], ks2, method=stab["method"].lower(),
+                    n_runs=int(n_runs2), init=stab.get("init", "random"),
+                    threshold=stab["threshold"], min_df=ms.get("min_df", 2),
+                    max_df=ms.get("max_df", 0.95),
+                    doc_labels=st.session_state.doc_labels, progress_callback=_cb2)
+            progress2.empty()
+            st.session_state.refinement = {"ref": ref, "k1": int(k_sel),
+                                           "share": float(res_share), "ks": ks2,
+                                           "n_runs": int(n_runs2),
+                                           "method": stab["method"]}
+
+    refn = st.session_state.refinement
+    if refn is not None and refn["k1"] == int(k_sel) and refn["method"] == stab["method"]:
+        ref = refn["ref"]
+        m_low = stab["method"].lower()
+        tag = "+".join(map(str, ref["residual"]))
+        st.markdown(f"**Stage 2: {len(ref['index']):,} documents of Topic_{tag}, "
+                    f"vocabulary {len(ref['names']):,} words**")
+        t2 = ref["table"]
+        st.dataframe(t2.style.format({c: "{:.2f}" for c in t2.columns if c != "K"}),
+                     use_container_width=True, hide_index=True)
+        if len(t2) > 1:
+            st.line_chart(t2.set_index("K")[["Stable documents (share)", "Mean agreement",
+                                             "Mean topic similarity",
+                                             "Mean ARI vs reference"]],
+                          height=240, use_container_width=True)
+        download_csv(t2, f"{m_low}_stage2_over_k")
+        k2_sel = st.selectbox("Two-stage model with K2 =", list(ref["details"].keys()),
+                              key="k2_sel")
+        names1 = (st.session_state.matrices["tf_names"] if m_low == "nmf"
+                  else st.session_state.matrices["lda_names"])
+        mg = mta.merge_stages(res, ref, k2_sel, names1=names1)
+        inner = mta.refinement_recommendation(ref["details"][k2_sel], refn["share"])
+        if inner:
+            st.warning("Inside stage 2, " + ", ".join(f"Topic_{tag}.{j}" for j in inner["topics"])
+                       + f" holds {inner['share']:.0%} of the residual documents. "
+                       "MTA stops at two stages; report it as it is or choose another K2.")
+        st.markdown(f"**Topics of the two-stage model ({len(mg['names'])} topics)**")
+        st.dataframe(mg["topics"].style.format(
+            {"Mean similarity": "{:.2f}",
+             "Reproduced (share of runs, sim >= 0.8)": "{:.0%}"}),
+            use_container_width=True, hide_index=True)
+        download_csv(mg["topics"], f"{m_low}_refined_K{k_sel}_{k2_sel}_topics")
+        st.markdown("**Documents: topic of the two-stage model, agreement and stability**")
+        st.dataframe(mg["documents"].style.format({"Agreement": "{:.0%}"}),
+                     use_container_width=True, hide_index=True)
+        download_csv(mg["documents"], f"{m_low}_refined_K{k_sel}_{k2_sel}_documents")
+        st.markdown("**Documents: weights of the two-stage model (with standard deviation)**")
+        download_csv(mg["weights"], f"{m_low}_refined_K{k_sel}_{k2_sel}_document_weights")
+        _ks2 = refn["ks"]
+        _r = ["--action", "refine", "--stability-method", m_low,
+              "--n-topics", str(refn["k1"]),
+              "--stage2-ks", (f"{_ks2[0]}-{_ks2[-1]}" if len(_ks2) > 1 else str(_ks2[0])),
+              "--n-runs", str(refn["n_runs"]),
+              "--stability-threshold", repr(stab["threshold"]), "--seed", "0"]
+        if refn["share"] != mta.RESIDUAL_SHARE:
+            _r += ["--residual-share", repr(refn["share"])]
+        if m_low == "nmf":
+            _r += ["--init", stab["init"]]
+        _notes = []
+        if refn["n_runs"] != stab["n_runs"]:
+            _notes.append(f"In the app stage 1 had {stab['n_runs']} runs and stage 2 "
+                          f"{refn['n_runs']}; the batch mode uses --n-runs for both.")
+        command_box("refine", f"Two stages: {stab['method']} K = {refn['k1']}, residual "
+                    f"Topic_{tag} refined with K2 = {_ks2[0]}–{_ks2[-1]}", "refine", _r,
+                    notes=_notes)
+
 st.divider()
 
 

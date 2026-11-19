@@ -41,6 +41,7 @@ _DEFAULT_STATE = {
     "nmf_words": None,
     "lda_words": None,
     "stability": None,     # 3.5: result of the multi-run stability check
+    "refinement": None,    # 3.10: stage 2 on the residual topic (and its settings)
     # 3.7: settings with which the results were computed (for the commands)
     "corpus_settings": None,   # min_word_length, file names, stopword file
     "matrix_settings": None,   # min_word_length, min_df, max_df at build time
@@ -73,7 +74,7 @@ def reset_corpus_state() -> None:
     for k in ["raw_texts", "doc_labels", "stopwords",
               "corpus_wo", "corpus_re", "matrices", "metrics",
               "nmf_results", "lda_results", "nmf_words", "lda_words",
-              "stability", "corpus_settings", "matrix_settings",
+              "stability", "refinement", "corpus_settings", "matrix_settings",
               "cv_settings", "nmf_settings", "lda_settings"]:
         st.session_state[k] = None
     # the command log is kept: it documents what was done before

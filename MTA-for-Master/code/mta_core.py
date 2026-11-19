@@ -833,6 +833,256 @@ def plot_stability_over_k(table: pd.DataFrame, language: str = "en") -> plt.Figu
     return fig
 
 
+# -----------------------------------------------------------------------------
+# 4b. RESIDUAL TOPIC AND TWO-STAGE REFINEMENT (3.10)
+# -----------------------------------------------------------------------------
+# A model of many short or mixed documents often has one topic that gathers
+# most documents: the documents the other topics do not explain. Its words are
+# the common words of the corpus. MTA calls it a residual topic when it holds at
+# least RESIDUAL_SHARE of the documents with a topic, and recommends refining
+# it: a second model on the documents of the residual topic only, with its own
+# vocabulary (stage 2). MTA never refines on its own, and never goes beyond two
+# stages: a residual topic inside stage 2 is reported, not refined.
+
+RESIDUAL_SHARE = 0.40
+
+
+def _topic_number(label) -> int:
+    """'Topic_3' -> 3; '' or anything else -> -1."""
+    if isinstance(label, str) and label.startswith("Topic_"):
+        try:
+            return int(label.split("_", 1)[1])
+        except ValueError:
+            return -1
+    return -1
+
+
+def residual_topics(stability_result: Dict,
+                    share: float = RESIDUAL_SHARE) -> pd.DataFrame:
+    """
+    Share of documents per consensus topic and the residual flag.
+
+    Parameters
+    ----------
+    stability_result : one result of topic_stability()
+    share : a topic is residual when its consensus documents are at least
+            this share of all documents with a topic (default 0.40).
+
+    Returns
+    -------
+    DataFrame: Topic, Documents (consensus), Share, Residual (bool).
+    """
+    t = stability_result["topics"]
+    n = float(t["Documents (consensus)"].sum())
+    out = pd.DataFrame({
+        "Topic": t["Topic"],
+        "Documents (consensus)": t["Documents (consensus)"].astype(int),
+        "Share": t["Documents (consensus)"] / n if n > 0 else 0.0,
+    })
+    out["Residual"] = out["Share"] >= share
+    return out
+
+
+def refinement_recommendation(stability_result: Dict,
+                              share: float = RESIDUAL_SHARE) -> Optional[Dict]:
+    """
+    None when no topic is residual; otherwise a dict with the residual topics
+    (numbers), their share of the documents and a sentence to show the user.
+    """
+    r = residual_topics(stability_result, share)
+    flagged = r[r["Residual"]]
+    if flagged.empty:
+        return None
+    topics = [_topic_number(x) for x in flagged["Topic"]]
+    tot = float(flagged["Share"].sum())
+    names = ", ".join(flagged["Topic"])
+    k = stability_result["summary"]["n_topics"]
+    text = (f"{names} holds {tot:.0%} of the documents (threshold {share:.0%}): "
+            f"a residual topic. Its words are the common words of the corpus, not a "
+            f"theme. Recommendation: refine it in a second stage — a model on its "
+            f"{int(flagged['Documents (consensus)'].sum()):,} documents only, with "
+            f"their own vocabulary. The other {k - len(topics)} topic(s) stay as they are.")
+    return {"topics": topics, "share": tot, "threshold": share,
+            "n_documents": int(flagged["Documents (consensus)"].sum()), "text": text}
+
+
+def refine_residual(
+    corpus_wo: List[str],
+    stopwords: List[str],
+    stage1: Dict,
+    residual: Sequence[int],
+    ks: Sequence[int],
+    method: str = "nmf",
+    n_runs: int = 20,
+    base_seed: int = 0,
+    init: str = "random",
+    threshold: float = 2 / 3,
+    min_df: float = 2,
+    max_df: float = 0.95,
+    doc_labels: Optional[List[str]] = None,
+    progress_callback=None,
+) -> Dict:
+    """
+    Stage 2: the stability check of a new model on the documents whose
+    consensus topic in stage 1 is a residual topic (3.10).
+
+    The documents keep the cleaning of the corpus (corpus_wo); the matrices
+    are built anew on them with the same min_df / max_df, so that stage 2
+    gets the vocabulary of the residual documents. Same method, runs, seeds
+    and threshold as given.
+
+    Returns
+    -------
+    dict with:
+        table    : stability_over_k() table for the K of stage 2
+        details  : K -> topic_stability() result on the residual documents
+        index    : positions (in the corpus) of the residual documents
+        residual : the residual topics of stage 1 (numbers)
+        names    : vocabulary of stage 2 (for the top words)
+        k1       : number of topics of stage 1
+        method, n_runs, threshold
+    """
+    residual = sorted(int(r) for r in residual)
+    k1 = int(stage1["summary"]["n_topics"])
+    if not residual or any(r < 0 or r >= k1 for r in residual):
+        raise ValueError(f"residual topics must be between 0 and {k1 - 1}")
+    if doc_labels is None:
+        doc_labels = list(stage1["documents"]["Document"])
+    cons = np.array([_topic_number(x) for x in stage1["documents"]["Consensus topic"]])
+    index = np.flatnonzero(np.isin(cons, residual))
+    if index.size < 3:
+        raise ValueError("the residual topic holds fewer than 3 documents")
+    sub = build_matrices([corpus_wo[i] for i in index], stopwords,
+                         min_df=min_df, max_df=max_df)
+    matrix = sub["tf_matrix"] if method.lower() == "nmf" else sub["lda_matrix"]
+    names = sub["tf_names"] if method.lower() == "nmf" else sub["lda_names"]
+    table, details = stability_over_k(
+        matrix, ks, method=method, n_runs=n_runs, base_seed=base_seed, init=init,
+        threshold=threshold, doc_labels=[doc_labels[i] for i in index],
+        progress_callback=progress_callback)
+    return {"table": table, "details": details, "index": index,
+            "residual": residual, "names": names, "k1": k1,
+            "method": method.upper(), "n_runs": n_runs, "threshold": threshold}
+
+
+def merge_stages(stage1: Dict, refinement: Dict, k2: int,
+                 names1: Optional[Sequence[str]] = None,
+                 n_words: int = 14) -> Dict:
+    """
+    One set of topics from the two stages (3.10).
+
+    The topics of stage 1 that are not residual keep their name (Topic_k).
+    The residual topic r is replaced by the K2 topics of stage 2, named
+    Topic_r.j (with several residual topics r1, r2: Topic_r1+r2.j).
+
+    Returns
+    -------
+    dict with:
+        documents : Document, Stage 1 topic, Topic, Stage, Agreement, Stable.
+                    Documents of the residual topic get their stage-2
+                    consensus topic, agreement and stability; the others
+                    keep those of stage 1.
+        weights   : per document the weight of every merged topic and its
+                    standard deviation. Stage-1 topics keep their weights.
+                    For the documents modelled in stage 2, the weight of the
+                    residual topic(s) w_r is divided by their stage-2 shares
+                    a_j: w_r · a_j, with standard deviation
+                    sqrt((w_r·sd(a_j))² + (sd(w_r)·a_j)²). Documents not
+                    modelled in stage 2 (outside the residual topic, or with
+                    no word left in its vocabulary) keep their residual
+                    weight unrefined in the column "Topic_r (not refined)":
+                    it is the weight of the common words, not a theme, and is
+                    not attributed to any stage-2 topic. Column "Stage 2
+                    weights": "own" or "not refined".
+        topics    : Topic, Stage, Documents (consensus), Stable documents,
+                    Mean similarity, Reproduced (share of runs, sim >= 0.8),
+                    and the top words when the vocabularies are known.
+    """
+    k2 = int(k2)
+    if k2 not in refinement["details"]:
+        raise ValueError(f"stage 2 has no model with K = {k2}")
+    res2 = refinement["details"][k2]
+    residual = refinement["residual"]
+    k1 = refinement["k1"]
+    keep = [k for k in range(k1) if k not in residual]
+    tag = "+".join(str(r) for r in residual)
+    sub_names = [f"Topic_{tag}.{j}" for j in range(k2)]
+    names = [f"Topic_{k}" for k in keep] + sub_names
+    index = refinement["index"]
+    n_docs = len(stage1["documents"])
+
+    # ---- documents
+    d1 = stage1["documents"].reset_index(drop=True)
+    d2 = res2["documents"].reset_index(drop=True)
+    topic = [f"Topic_{_topic_number(x)}" if _topic_number(x) >= 0 else ""
+             for x in d1["Consensus topic"]]
+    stage = [1] * n_docs
+    agree = d1["Agreement"].to_numpy(dtype=float).copy()
+    stable = d1["Stable"].to_numpy(dtype=bool).copy()
+    for pos, i in enumerate(index):
+        j = _topic_number(d2.at[pos, "Consensus topic"])
+        topic[i] = sub_names[j] if j >= 0 else ""
+        stage[i] = 2
+        agree[i] = d2.at[pos, "Agreement"]
+        stable[i] = bool(d2.at[pos, "Stable"])
+    documents = pd.DataFrame({
+        "Document": d1["Document"], "Stage 1 topic": d1["Consensus topic"],
+        "Topic": topic, "Stage": stage, "Agreement": agree, "Stable": stable})
+
+    # ---- weights
+    w1 = stage1["weights"]
+    m1 = w1[[f"Topic_{k}" for k in range(k1)]].to_numpy(dtype=float)
+    s1 = w1[[f"Topic_{k} sd" for k in range(k1)]].to_numpy(dtype=float)
+    w2 = res2["weights"]
+    m2 = w2[[f"Topic_{j}" for j in range(k2)]].to_numpy(dtype=float)
+    s2 = w2[[f"Topic_{j} sd" for j in range(k2)]].to_numpy(dtype=float)
+    a = np.zeros((n_docs, k2)); sa = np.zeros((n_docs, k2))
+    has = m2.sum(axis=1) > 0
+    a[index[has]] = m2[has]; sa[index[has]] = s2[has]
+    own = np.zeros(n_docs, dtype=bool); own[index[has]] = True
+    wr = m1[:, residual].sum(axis=1)
+    sr = np.sqrt((s1[:, residual] ** 2).sum(axis=1))
+    rest = f"Topic_{tag} (not refined)"
+    mean = np.column_stack([m1[:, keep], wr[:, None] * a, np.where(own, 0.0, wr)])
+    sd = np.column_stack([s1[:, keep],
+                          np.sqrt((wr[:, None] * sa) ** 2 + (sr[:, None] * a) ** 2),
+                          np.where(own, 0.0, sr)])
+    columns = names + [rest]
+    weights = pd.DataFrame(mean, columns=columns)
+    for c, col in enumerate(columns):
+        weights[f"{col} sd"] = sd[:, c]
+    weights.insert(0, "Document", list(w1["Document"]))
+    weights["Stage 2 weights"] = np.where(own, "own", "not refined")
+
+    # ---- topics
+    t1 = stage1["topics"].set_index("Topic")
+    t2 = res2["topics"].set_index("Topic")
+    cols = ["Mean similarity", "Reproduced (share of runs, sim >= 0.8)"]
+    rows = []
+    for k in keep:
+        r = t1.loc[f"Topic_{k}"]
+        rows.append({"Topic": f"Topic_{k}", "Stage": 1,
+                     "Documents (consensus)": int(r["Documents (consensus)"]),
+                     "Stable documents": int(r["Stable documents"]),
+                     **{c: float(r[c]) for c in cols}})
+    for j in range(k2):
+        r = t2.loc[f"Topic_{j}"]
+        rows.append({"Topic": sub_names[j], "Stage": 2,
+                     "Documents (consensus)": int(r["Documents (consensus)"]),
+                     "Stable documents": int(r["Stable documents"]),
+                     **{c: float(r[c]) for c in cols}})
+    topics = pd.DataFrame(rows)
+    if names1 is not None and "reference" in stage1:
+        H1 = stage1["reference"]["topicwords"]; H2 = res2["reference"]["topicwords"]
+        n2 = refinement["names"]
+        tw = [", ".join(names1[i] for i in np.argsort(H1[k])[::-1][:n_words]) for k in keep]
+        tw += [", ".join(n2[i] for i in np.argsort(H2[j])[::-1][:n_words]) for j in range(k2)]
+        topics["Top words"] = tw
+    return {"documents": documents, "weights": weights, "topics": topics,
+            "names": names, "not_refined": rest, "k1": k1, "k2": k2,
+            "residual": residual}
+
+
 # =============================================================================
 # 5. EXPLOITING TOPICS
 # =============================================================================

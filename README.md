@@ -17,9 +17,9 @@ that older work remains reproducible.
 
 | Folder              | What it contains                                      | For whom                                 |
 | ------------------- | ----------------------------------------------------- | ---------------------------------------- |
-| `MTA-for-Master/`   | **Versions 3.0–3.9.1** — Streamlit web app + modern CLI | Everyone, current users                  |
+| `MTA-for-Master/`   | **Versions 3.0–3.10** — Streamlit web app + modern CLI | Everyone, current users                  |
 | `archive/`          | **Versions ≤ 2.0** — original single-script `MTA.py`  | Users with legacy workflows or do-files  |
-| `changes.md`        | Full version history (3.9.1 down to 0.1, January 2017)  | Anyone tracking what changed             |
+| `changes.md`        | Full version history (3.10 down to 0.1, January 2017)  | Anyone tracking what changed             |
 | `LICENSE`           | License                                               | —                                        |
 
 If you arrived here for the first time, **use `MTA-for-Master/`**. The
@@ -62,6 +62,10 @@ can still find it, its documentation, and reproduce earlier analyses.
     topic (consensus topic + agreement, adjusted Rand index). Comparing
     several numbers of topics shows which one gives the most stable
     model.
+  - **Two stages for a residual topic** (3.10): when one topic holds
+    most documents (the common words of the corpus, not a theme), MTA
+    recommends refining it with a second model on its documents, and
+    gives one set of topics from the two stages.
   - **From clicks to a script** (3.7): every analysis of the app shows
     the batch command that reproduces it, and the whole session can be
     downloaded as a script (`.sh` or `.bat`) — explore in the app, then
@@ -78,7 +82,7 @@ and Farsi texts.
 
 ## Which version should I use?
 
-  - **You are a student or a new user → version 3.9.1**
+  - **You are a student or a new user → version 3.10**
     (`MTA-for-Master/`). It installs in a few clicks, no Anaconda
     needed, and the Streamlit interface walks you through the workflow
     page by page. Open

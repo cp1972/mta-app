@@ -35,6 +35,12 @@ Batch — stability of NMF with 4, 5 and 6 topics, 50 runs each (3.5):
     python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
                      --action stability --stability-ks 4-6 --n-runs 50
 
+Batch — residual topic refined in a second stage: stage 1 with 5 topics,
+stage 2 with 3 to 8 topics on the documents of the residual topic (3.10):
+
+    python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
+                     --action refine --n-topics 5 --stage2-ks 3-8 --n-runs 50
+
 Batch — full pipeline:
 
     python MTA_v3.py --corpus /data/articles --stopwords /data/stop_de.txt \\
@@ -255,6 +261,9 @@ def run_batch(args: argparse.Namespace) -> int:
         elif action == "stability":
             _action_stability(args, matrices, labels,
                               output_dir, csv_json_formats, plot_formats)
+        elif action == "refine":
+            _action_refine(args, matrices, corpus_wo, stopwords, labels,
+                           output_dir, csv_json_formats, plot_formats)
         elif action == "axis-analysis":
             _action_axis_analysis(args, matrices, labels,
                                    output_dir, csv_json_formats,
@@ -368,7 +377,98 @@ def _action_stability(args, matrices, labels,
         print(f"  {int(r['K']):<3} {r['Stable documents (share)']:>10.0%}"
               f"   {r['Mean agreement']:>14.2f}   {r['Mean topic similarity']:>16.2f}"
               f"   {r['Mean ARI vs reference']:.2f}")
+    # 3.10: residual topic -> recommendation (never refined here)
+    for k, res in details.items():
+        rec = mta.refinement_recommendation(res, args.residual_share)
+        if rec:
+            print(f"\n  K = {k}: {rec['text']}")
+            print(f"    → --action refine --n-topics {k} --stability-method {method} "
+                  f"--n-runs {args.n_runs} --stage2-ks 3-8"
+                  + ("" if args.residual_share == mta.RESIDUAL_SHARE
+                     else f" --residual-share {args.residual_share!r}"))
     print("  ✓ Stability analysis complete")
+
+
+def _action_refine(args, matrices, corpus_wo, stopwords, labels,
+                   output_dir, csv_json_formats, plot_formats):
+    """Two-stage model: the residual topic of stage 1 refined by a model of
+    its own documents (3.10). Stage 1 = the stability check of --n-topics;
+    stage 2 = the stability check over --stage2-ks on the residual documents."""
+    method = args.stability_method
+    k1 = args.n_topics
+    matrix = matrices["tf_matrix"] if method == "nmf" else matrices["lda_matrix"]
+    names1 = matrices["tf_names"] if method == "nmf" else matrices["lda_names"]
+    init = args.init if (args.init in ("random", "nndsvdar")) else "random"
+    base_seed = args.seed if args.seed is not None else 0
+    cb = lambda i, total, label: progress_bar(
+        i, total, prefix=f"    {label}", suffix=f"({i}/{total})", length=20)
+    print(f"  Stage 1: {method.upper()}, K = {k1}, {args.n_runs} runs")
+    s1 = mta.topic_stability(matrix, k1, method=method, n_runs=args.n_runs,
+                             base_seed=base_seed, init=init,
+                             threshold=args.stability_threshold, doc_labels=labels,
+                             progress_callback=cb)
+    rt = mta.residual_topics(s1, args.residual_share)
+    rt["Top words"] = [", ".join(names1[i] for i in np.argsort(h)[::-1][:14])
+                       for h in s1["reference"]["topicwords"]]
+    save_dataframe(rt.set_index("Topic"), f"{method}_stage1_K{k1}_topics",
+                   output_dir, csv_json_formats)
+    if args.residual_topics:
+        residual = [int(x) for x in str(args.residual_topics).split(",") if x.strip()]
+        print(f"  Residual topic(s) chosen: {residual}")
+    else:
+        rec = mta.refinement_recommendation(s1, args.residual_share)
+        if rec is None:
+            print(f"  No topic holds {args.residual_share:.0%} of the documents or more: "
+                  "no residual topic, nothing to refine. Give --residual-topics to "
+                  "refine a topic of your choice.")
+            return
+        residual = rec["topics"]
+        print(f"  {rec['text']}")
+    ks = _parse_ks(args.stage2_ks, 4)
+    ref = mta.refine_residual(
+        corpus_wo, stopwords, s1, residual, ks, method=method, n_runs=args.n_runs,
+        base_seed=base_seed, init=init, threshold=args.stability_threshold,
+        min_df=args.min_df, max_df=args.max_df, doc_labels=labels,
+        progress_callback=cb)
+    print(f"\n  Stage 2: {len(ref['index']):,} documents of Topic_{'+'.join(map(str, residual))}, "
+          f"vocabulary {len(ref['names']):,} words, K = {ks}")
+    save_dataframe(ref["table"].set_index("K"), f"{method}_stage2_over_k",
+                   output_dir, csv_json_formats)
+    summary = {"stage1": s1["summary"], "residual_topics": residual,
+               "residual_share": args.residual_share,
+               "residual_documents": int(len(ref["index"])), "stage2": {}}
+    for k2, res in ref["details"].items():
+        t2 = res["topics"].copy()
+        t2["Top words"] = [", ".join(ref["names"][i] for i in np.argsort(h)[::-1][:14])
+                           for h in res["reference"]["topicwords"]]
+        save_dataframe(t2.set_index("Topic"), f"{method}_stage2_K{k2}_topics",
+                       output_dir, csv_json_formats)
+        mg = mta.merge_stages(s1, ref, k2, names1=names1)
+        save_dataframe(mg["topics"].set_index("Topic"),
+                       f"{method}_refined_K{k1}_{k2}_topics", output_dir, csv_json_formats)
+        save_dataframe(mg["documents"].set_index("Document"),
+                       f"{method}_refined_K{k1}_{k2}_documents", output_dir, csv_json_formats)
+        save_dataframe(mg["weights"].set_index("Document"),
+                       f"{method}_refined_K{k1}_{k2}_document_weights", output_dir, csv_json_formats)
+        summary["stage2"][str(k2)] = res["summary"]
+        inner = mta.refinement_recommendation(res, args.residual_share)
+        if inner:
+            summary["stage2"][str(k2)]["residual_inside"] = inner["topics"]
+    if len(ks) > 1:
+        fig = mta.plot_stability_over_k(ref["table"], language=args.language)
+        save_figure(fig, f"{method}_stage2_over_k", output_dir, plot_formats)
+    (output_dir / f"{method}_refine_summary.json").write_text(
+        json.dumps(summary, indent=2), encoding="utf-8")
+    print("\n  K2  stable docs   mean agreement   topic similarity   ARI")
+    for _, r in ref["table"].iterrows():
+        k2 = int(r["K"])
+        note = ("   (a residual topic again: reported, MTA stops at two stages)"
+                if "residual_inside" in summary["stage2"][str(k2)] else "")
+        print(f"  {k2:<3} {r['Stable documents (share)']:>10.0%}"
+              f"   {r['Mean agreement']:>14.2f}   {r['Mean topic similarity']:>16.2f}"
+              f"   {r['Mean ARI vs reference']:.2f}{note}")
+    print(f"  ✓ Two-stage model written for K2 = {ks}: {method}_refined_K{k1}_<K2>_* "
+          "(choose K2 by the stability table)")
 
 
 def _plot_metrics_matplotlib(metrics: dict, language: str = "en") -> plt.Figure:
@@ -1486,7 +1586,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--action",
                    choices=["nmf", "lda", "evolution", "word-weights",
                             "semantic", "compare-groups", "network",
-                            "axis-analysis", "stability",
+                            "axis-analysis", "stability", "refine",
                             # Aliases kept for backward compatibility
                             # (3.2/3.3 → 3.4 transition). They run the
                             # same axis-analysis action and emit a
@@ -1521,6 +1621,20 @@ def build_parser() -> argparse.ArgumentParser:
                    help="For --action stability: minimum share of runs in "
                         "which a document must keep its consensus topic to "
                         "count as stable (default: 0.667).")
+    # --- Residual topic and two stages (3.10) -----------------------------
+    p.add_argument("--residual-share", type=float, default=mta.RESIDUAL_SHARE,
+                   help="For --action stability and refine: a topic holding at "
+                        "least this share of the documents is a residual topic "
+                        "(default: 0.4). Stability only recommends; refine "
+                        "refines it.")
+    p.add_argument("--residual-topics", type=str, default=None,
+                   help="For --action refine: the residual topic(s) of stage 1, "
+                        "e.g. '1' or '1,3' (default: those holding at least "
+                        "--residual-share of the documents).")
+    p.add_argument("--stage2-ks", type=str, default="3-8",
+                   help="For --action refine: numbers of topics of stage 2, as "
+                        "for --stability-ks (default: 3-8). Stage 1 has "
+                        "--n-topics topics; both stages use --n-runs runs.")
     p.add_argument("--words", type=str, default=None,
                    help="Comma- or space-separated words for word-weights "
                         "or semantic actions.")
