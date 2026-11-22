@@ -135,6 +135,20 @@ def save_figure(fig: plt.Figure, name: str, output_dir: Path,
     plt.close(fig)
 
 
+def _save_corpus_settings(output_dir: Path, n_docs: int, matrices: dict,
+                          min_word_length, min_df, max_df, stopwords_path) -> None:
+    """3.10.1: the settings that decide the vocabulary, next to the results
+    (corpus_settings.json). The stability of a model depends on them, so runs
+    with other settings can be told apart."""
+    (Path(output_dir) / "corpus_settings.json").write_text(json.dumps({
+        "documents": int(n_docs),
+        "vocabulary": int(len(matrices["tf_names"])),
+        "min_word_length": int(min_word_length),
+        "min_df": min_df, "max_df": max_df,
+        "stopwords": str(stopwords_path),
+    }, indent=2), encoding="utf-8")
+
+
 def prepare_output_dir(user_path: Optional[str]) -> Path:
     """Create (and return) the output directory. Default = MTA-Results_<ts>."""
     if user_path:
@@ -222,7 +236,11 @@ def run_batch(args: argparse.Namespace) -> int:
         corpus_wo, stopwords,
         min_df=args.min_df, max_df=args.max_df,
     )
-    print(f"  ✓ Vocabulary: {len(matrices['tf_names']):,} words")
+    print(f"  ✓ Vocabulary: {len(matrices['tf_names']):,} words "
+          f"(min word length {args.min_word_length}, min_df {args.min_df}, "
+          f"max_df {args.max_df})")
+    _save_corpus_settings(output_dir, len(raw_texts), matrices, args.min_word_length,
+                          args.min_df, args.max_df, args.stopwords)
 
     # Save the corpus-level artefacts (3.8: not for very large corpora)
     _save_tfidf(matrices, output_dir, csv_json_formats)
@@ -387,13 +405,16 @@ def _action_stability(args, matrices, labels,
                   + ("" if args.residual_share == mta.RESIDUAL_SHARE
                      else f" --residual-share {args.residual_share!r}"))
     print("  ✓ Stability analysis complete")
+    return details
 
 
 def _action_refine(args, matrices, corpus_wo, stopwords, labels,
-                   output_dir, csv_json_formats, plot_formats):
+                   output_dir, csv_json_formats, plot_formats, stage1=None):
     """Two-stage model: the residual topic of stage 1 refined by a model of
     its own documents (3.10). Stage 1 = the stability check of --n-topics;
-    stage 2 = the stability check over --stage2-ks on the residual documents."""
+    stage 2 = the stability check over --stage2-ks on the residual documents.
+    stage1: a stability result of --n-topics already computed with the same
+    settings (interactive mode, 3.10.1); otherwise it is computed here."""
     method = args.stability_method
     k1 = args.n_topics
     matrix = matrices["tf_matrix"] if method == "nmf" else matrices["lda_matrix"]
@@ -402,11 +423,15 @@ def _action_refine(args, matrices, corpus_wo, stopwords, labels,
     base_seed = args.seed if args.seed is not None else 0
     cb = lambda i, total, label: progress_bar(
         i, total, prefix=f"    {label}", suffix=f"({i}/{total})", length=20)
-    print(f"  Stage 1: {method.upper()}, K = {k1}, {args.n_runs} runs")
-    s1 = mta.topic_stability(matrix, k1, method=method, n_runs=args.n_runs,
-                             base_seed=base_seed, init=init,
-                             threshold=args.stability_threshold, doc_labels=labels,
-                             progress_callback=cb)
+    if stage1 is not None:
+        print(f"  Stage 1: {method.upper()}, K = {k1}, {args.n_runs} runs (already computed)")
+        s1 = stage1
+    else:
+        print(f"  Stage 1: {method.upper()}, K = {k1}, {args.n_runs} runs")
+        s1 = mta.topic_stability(matrix, k1, method=method, n_runs=args.n_runs,
+                                 base_seed=base_seed, init=init,
+                                 threshold=args.stability_threshold, doc_labels=labels,
+                                 progress_callback=cb)
     rt = mta.residual_topics(s1, args.residual_share)
     rt["Top words"] = [", ".join(names1[i] for i in np.argsort(h)[::-1][:14])
                        for h in s1["reference"]["topicwords"]]
@@ -1813,17 +1838,26 @@ def run_interactive() -> int:
 
     # Preprocess + matrices
     min_word_length = int(input("Min word length [3]: ").strip() or "3")
+    # 3.10.1: the vocabulary thresholds, as --min-df / --max-df in batch mode
+    _mdf = input("Min document frequency: in how many documents at least "
+                 "(e.g. 5) or in which share (e.g. 0.01) [2]: ").strip() or "2"
+    min_df = int(_mdf) if _mdf.isdigit() else float(_mdf)
+    max_df = float(input("Max document frequency: share of documents above which "
+                         "a word is dropped [0.95]: ").strip() or "0.95")
     print("Cleaning corpus + building TF-IDF / Count matrices…")
     corpus_wo, corpus_re = mta.preprocess_corpus(
         raw_texts, stopwords, min_word_length=min_word_length,
     )
     matrices = mta.build_matrices(corpus_wo, stopwords,
-                                  min_df=2, max_df=0.95)
-    print(f"  ✓ Vocabulary: {len(matrices['tf_names']):,} words")
+                                  min_df=min_df, max_df=max_df)
+    print(f"  ✓ Vocabulary: {len(matrices['tf_names']):,} words "
+          f"(min word length {min_word_length}, min_df {min_df}, max_df {max_df})")
 
     output_dir = prepare_output_dir(None)
     print(f"  Outputs will be written to {output_dir.resolve()}")
     _save_tfidf(matrices, output_dir, {"csv", "json"})
+    _save_corpus_settings(output_dir, len(raw_texts), matrices, min_word_length,
+                          min_df, max_df, stopwords_path)
 
     # Session state for the interactive menu (replaces original globals)
     session = {
@@ -1835,6 +1869,9 @@ def run_interactive() -> int:
         "output_dir": output_dir,
         "nmf": None,
         "lda": None,
+        "stopwords": stopwords,          # 3.10.1: for the second stage
+        "min_df": min_df,
+        "max_df": max_df,
     }
 
     # Main menu loop
@@ -1850,9 +1887,11 @@ def run_interactive() -> int:
         print("  5. Group comparison (significance tests)")
         print("  6. Network views (topic↔doc, topic↔words, combined)")
         print("  7. Axis analysis (projection + ANOVA on user-defined axes)")
+        print("  8. Stability of the topics over several runs "
+              "(and two stages for a residual topic)")
         print("  0. Quit")
         print()
-        choice = input("Your choice [0-7]: ").strip()
+        choice = input("Your choice [0-8]: ").strip()
 
         if choice == "0":
             print("\nGoodbye!")
@@ -1871,8 +1910,75 @@ def run_interactive() -> int:
             _interactive_menu_6(session)
         elif choice == "7":
             _interactive_menu_7(session)
+        elif choice == "8":
+            _interactive_menu_8(session)
         else:
             print(f"  ✗ Invalid choice: {choice!r}")
+
+
+def _interactive_menu_8(session):
+    """Menu 8 — stability over several runs, and the second stage for a
+    residual topic (3.10.1). Same computation and output files as
+    --action stability and --action refine."""
+    import argparse as _ap
+    method = (input("  Model [nmf/lda] [nmf]: ").strip().lower() or "nmf")
+    if method not in ("nmf", "lda"):
+        method = "nmf"
+    ks = input("  Numbers of topics K, e.g. 5, 4-6 or 4,6,8 [3-8]: ").strip() or "3-8"
+    n_runs = int(input("  Runs per K [20]: ").strip() or "20")
+    init = "random"
+    if method == "nmf":
+        init = (input("  Starting points of NMF [random/nndsvdar] [random]: ")
+                .strip().lower() or "random")
+        if init not in ("random", "nndsvdar"):
+            init = "random"
+    seed = int(input("  First seed [0]: ").strip() or "0")
+    thr = float(input("  Share of runs for a stable document [0.667]: ").strip() or str(2 / 3))
+    share = float(input(f"  A topic is residual from this share of the documents "
+                        f"[{mta.RESIDUAL_SHARE}]: ").strip() or str(mta.RESIDUAL_SHARE))
+    args = _ap.Namespace(
+        stability_method=method, stability_ks=ks, n_topics=_parse_ks(ks, 5)[0],
+        n_runs=n_runs, init=init, seed=seed, stability_threshold=thr,
+        residual_share=share, residual_topics=None, stage2_ks="3-8",
+        min_df=session["min_df"], max_df=session["max_df"],
+        language=session["language"])
+    out = session["output_dir"]
+    try:
+        details = _action_stability(args, session["matrices"], session["labels"],
+                                    out, {"csv", "json"}, {"pdf", "png"})
+    except ValueError as e:
+        print(f"  ✗ {e}")
+        return
+    flagged = [k for k, r in details.items()
+               if mta.refinement_recommendation(r, share)]
+    if not flagged:
+        print(f"  No topic holds {share:.0%} of the documents or more: no residual "
+              "topic, nothing to refine.")
+        return
+    ans = input(f"\n  Refine the residual topic in a second stage? "
+                f"Give K of stage 1 {flagged} or Enter for no: ").strip()
+    if not ans:
+        print("  Not refined (MTA only recommends; you decide).")
+        return
+    try:
+        k1 = int(ans)
+    except ValueError:
+        print(f"  ✗ Not a number: {ans!r}")
+        return
+    if k1 not in details:
+        print(f"  ✗ K = {k1} was not computed: choose one of {sorted(details)}")
+        return
+    args.n_topics = k1
+    args.stage2_ks = input("  Numbers of topics in stage 2 (K2) [3-8]: ").strip() or "3-8"
+    own = input("  Residual topic(s) of stage 1, e.g. 1 or 1,3 "
+                "[Enter = those above the threshold]: ").strip()
+    args.residual_topics = own or None
+    try:
+        _action_refine(args, session["matrices"], session["corpus_wo"],
+                       session["stopwords"], session["labels"], out,
+                       {"csv", "json"}, {"pdf", "png"}, stage1=details[k1])
+    except ValueError as e:
+        print(f"  ✗ {e}")
 
 
 def _interactive_menu_1(session):

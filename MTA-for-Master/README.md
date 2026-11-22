@@ -181,6 +181,30 @@ given with `--residual-topics`), and writes stage 2 for K2 = 3 … 8 and the
 two-stage tables `nmf_refined_K5_<K2>_*` for each K2
 (`--residual-share 0.5` changes the threshold).
 
+In the **command-line interactive menu** (launcher option [2]), item
+**8. Stability of the topics over several runs** asks for the model, the
+numbers of topics, the runs, the starting points, the threshold of a
+stable document and the share of a residual topic, computes the
+stability check and, if there is a residual topic, asks whether to refine
+it in a second stage. It writes the same files as `--action stability`
+and `--action refine` (new in 3.10.1).
+
+**The vocabulary changes the stability.** Which words enter the model
+depends on three settings: the minimum word length (`--min-word-length`,
+default 3), the minimum and the maximum document frequency (`--min-df`,
+default 2 documents; `--max-df`, default 0.95). With more or fewer words
+the topics and their stability differ, so compare stability checks only
+with the same settings. The interactive menu asks for all three at the
+start; in batch mode, for example:
+
+```bash
+./.venv/bin/python code/MTA_v3.py --corpus PATH --stopwords PATH \
+    --min-word-length 4 --min-df 5 --action stability --stability-ks 3-8 --n-runs 50
+```
+
+Since 3.10.1 every results folder holds `corpus_settings.json` with these
+settings, the number of documents and the size of the vocabulary.
+
 ## From clicks to a script: commands and session log (new in 3.7)
 
 Every analysis in the app has an exact counterpart in the batch mode.

@@ -1,5 +1,15 @@
 # Major changes in versions of MTA
 
+## MTA version 3.10.1 -- November 2026 -- Patch release
+
+The command line catches up with the app. **All computations and tables stay the same.**
+
+  - **Interactive menu, item 8: stability and two stages.** The interactive mode of `MTA_v3.py` had no stability check. Item 8 asks for the model, the numbers of topics (`5`, `4-6` or `4,6,8`), the runs per K, the starting points of NMF, the first seed, the share of runs for a stable document and the share of a residual topic. It runs the same code as `--action stability` and writes the same files; when a topic is residual it asks whether to refine it, for which K of stage 1, with which K2 and, if wanted, which topics, and then runs the same code as `--action refine`, reusing the stage 1 already computed. Checked: with the same settings the 24 tables of the interactive mode and of the batch mode are identical.
+  - **Interactive menu: minimum and maximum document frequency.** The interactive mode asked for the minimum word length but fixed `min_df` = 2 and `max_df` = 0.95. It now asks for both, as `--min-df` and `--max-df` in batch mode, and shows the size of the vocabulary with the three settings.
+  - **`corpus_settings.json`** in every results folder (batch and interactive): minimum word length, `min_df`, `max_df`, stopword file, number of documents and size of the vocabulary. The stability of a model depends on its vocabulary; the file tells runs with different settings apart. The batch mode also prints the three settings next to the size of the vocabulary.
+  - The minimum word length in batch mode is `--min-word-length` (since 3.0, default 3); the README now shows it with the stability check.
+
+
 ## MTA version 3.10 -- November 2026 -- Minor release
 
 Two stages for a residual topic. In corpora of many short or mixed documents a model often has one topic that gathers most documents: those the other topics do not explain. Its words are the common words of the corpus, and it hides the themes below them. Choosing more topics does not help: the stability falls before the large topic splits. The remedy used in book chapter 12, and so far done with separate scripts, is a second model on the documents of that topic only, with their own vocabulary. MTA 3.10 does this itself, in two steps the user controls. **All tables of 3.9.1 stay exactly the same**; nothing is refined unless the user asks for it.
